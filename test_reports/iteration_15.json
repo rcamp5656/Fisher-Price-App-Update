@@ -1,0 +1,27 @@
+{
+  "summary": "Iter15 verifies (1) 8 kHz mono review audio, (2) auto-fill Disc title from MIDI first-track name or prettified file stem, (3) melody_fill accompaniment-borrow option. Backend: 108/108 pytest green (101 prior + 7 new iter15). test_iter13_render_pins asserts updated from 6000 Hz to 8000 Hz per request. New iter15 asserts: POST /api/render baby1 tracks=5 returns audio/wav with X-Sample-Rate=8000, wave framerate=8000, nchannels=1, sampwidth=2; POST /api/scan whoscheating.mid title==\"Who's Cheatin Who\", baby1.mid title=='', sample_twinkle.mid title is string; POST /api/analyze baby1 start=18.7 duration=25 tracks='5' melody_fill=false -> 32 notes, melody_fill=true -> 60 notes (dropped=0); tracks='' (all) -> melody_fill no-op; POST /api/render whoscheating tracks='3' melody_fill=true X-Notes (352) > melody_fill=false X-Notes (272). FRONTEND (public URL): title-input auto-fills — whoscheating.mid -> \"Who's Cheatin Who\", baby1.mid -> 'baby1', sample_twinkle.mid -> 'sample twinkle'; melody-fill-check default ON after upload; LOAD NOTES stat-notes=32 with fill, uncheck -> stale-badge appears -> LOAD NOTES stat-notes=6; render-song-button -> render-meta '9 side(s) · 352 toy notes · 25.5 s · from 12.2 s · transposed +12 st · 86% match · 8 kHz mono'; toggling melody-fill-check clears render-result. Zero console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter15_8khz_melody_fill.py",
+    "/app/test_reports/pytest/iter15.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "fisher_price.py is now 1304 lines — still past the 700-line split threshold. The three melody helpers (_skyline, _melody_fill, scan_tracks melody scoring) are good candidates for a melody.py module.",
+    "_melody_fill thinning uses t - last >= 0.25 s but doesn't dedupe against notes already in `sel` at the same time bucket; borrowed notes that collide with a melody onset still get appended before the sort. parse_midi_events relies on downstream snapping/merge to clean this up — explicit dedupe would be safer.",
+    "parse_midi_events computes `others` as tracks with mean >= 55 to skip bass; the same 55-cutoff appears in scan_tracks is_bass. Extract as a module-level BASS_MEAN_THRESHOLD constant to keep them in sync.",
+    "stem() in Creator.js caps to 40 chars but the backend title is also sliced to 40 — if a MIDI track_name is exactly 40 chars it may be mid-word; acceptable for a titlebar but worth a UI tooltip showing the full value."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter15_8khz_melody_fill.py (new, 7 tests)",
+    "/app/backend/tests/test_iter13_render_pins.py (6000 -> 8000 Hz assertions, 2 lines)"
+  ],
+  "success_rate": {"backend": "100% (108/108 pytest)", "frontend": "100% of iter15 assertions, 0 console errors"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter15: review audio is now 8 kHz mono (RENDER_RATE=8000). /api/scan returns `title` (MIDI first-track name, 40-char slice). Frontend scanFile prefers MIDI title, falls back to stem(filename) via dropAnalysis->onFileA on every upload. melody_fill (form bool) in /api/analyze,/autofit,/render,/album borrows skyline from non-bass OTHER tracks across rests > 1.5 s in the chosen melody track, thinned to >=0.25 s and dedup bucket 0.1 s. UI: TrackPicker exposes melody-fill-check, default true; toggling it in Creator sets stale and clears render result. Render meta string now ends with '8 kHz mono'.",
+  "rca of the issue": "N/A — feature verification pass (no bug reported). All three asked-for enhancements landed cleanly; only pre-existing code-quality smell is file length."
+}

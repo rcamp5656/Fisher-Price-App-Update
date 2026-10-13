@@ -119,6 +119,18 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
         </div>
       )}
 
+      <div className="flex items-center justify-between">
+        <label className="font-mono text-sm flex items-center gap-2" title="Experimental: put pins on the same beat in different grooves so several tines pluck together. The factory records never do this — try it and listen.">
+          <Layers className="h-4 w-4" /> Let the box try chords
+        </label>
+        <Toggle checked={!!s.chords} onChange={(v) => set({ chords: v })} testId="chords-toggle" />
+      </div>
+      {s.chords && (
+        <p className="font-mono text-[10px] text-[#E63946] -mt-2" data-testid="chords-hint">
+          Experimental — notes on the same beat are kept as chords instead of rolled. Single tines still get their rest beat.
+        </p>
+      )}
+
       <div>
         <label className="font-mono text-sm flex items-center gap-2 mb-1"><Layers className="h-4 w-4" /> Chord roll direction</label>
         <div className="grid grid-cols-2 gap-2">

@@ -314,6 +314,29 @@ def choose_transposition(notes: List[int], comb: Comb = DEFAULT_COMB,
     return best[1]
 
 
+def transposition_candidates(notes: List[int], comb: Comb = DEFAULT_COMB, k: int = 4) -> List[int]:
+    """Best few shifts (tines up or down) ranked by how many melody notes land
+    exactly on a tine, then by staying inside the comb's range, then smallest."""
+    if not notes:
+        return [0]
+    allowed = set(comb.notes)
+    lo, hi = min(comb.notes), max(comb.notes)
+    scored = []
+    for offset in range(-36, 37):
+        shifted = [n + offset for n in notes]
+        exact = sum(1 for x in shifted if x in allowed)
+        inside = sum(1 for x in shifted if lo <= x <= hi)
+        scored.append((exact + 0.5 * inside, offset % 12 == 0, -abs(offset), offset))
+    scored.sort(reverse=True)
+    out = [choose_transposition(notes, comb)]
+    for *_, offset in scored:
+        if offset not in out:
+            out.append(offset)
+        if len(out) >= k:
+            break
+    return out
+
+
 def snap_note(midi: int, comb: Comb = DEFAULT_COMB) -> int:
     return min(comb.notes, key=lambda a: abs(a - midi))
 
@@ -424,7 +447,7 @@ def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
              comb: Comb = DEFAULT_COMB, roll: str = "before", auto_transpose: bool = True,
              manual_offset: int = 0, max_tries: int = 12000, tempo_range: float = 0.35,
              nudge: float = 0.5, tracks: Optional[List[int]] = None, skyline: bool = False,
-             melody_fill: bool = False) -> Dict:
+             melody_fill: bool = False, chords: bool = False) -> Dict:
     """Re-map the MIDI slice onto the 86-beat disc up to `max_tries` ways —
     varying how many MIDI seconds fill one revolution (tempo within
     ±tempo_range) and a fine shift of the window start (±nudge s) — comparing
@@ -439,7 +462,8 @@ def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
         rec["fit"] = {"score": 0.0, "tries": 0, "duration": rev_seconds, "start": start, "tempo": 1.0, "matched": 0, "timing_ms": 0.0}
         return rec
     notes = [n for _, n in all_events]
-    offset = choose_transposition(notes, comb) if auto_transpose else manual_offset
+    offsets = transposition_candidates(notes, comb) if auto_transpose else [manual_offset]
+    offset = offsets[0]
     T = np.array([t for t, _ in all_events])
     tones = np.array([_event_tone(n, offset, comb) for n in notes])
     single = np.array([len(comb.tines[t]) == 1 for t in range(comb.tones)])
@@ -464,16 +488,17 @@ def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
 
     deltas = np.arange(0, 2 * nudge + 1e-9, 0.05)
     refine = min(300, max(10, max_tries // 10))
-    n_dur = max(1, (max_tries - 2 * refine) // len(deltas))
+    n_dur = max(1, (max_tries - 2 * refine - 4) // len(deltas))
     durs = np.linspace(d_lo, d_hi, n_dur)
     coarse = sorted(((quick(d, u), d, u) for d in deltas for u in durs), reverse=True)
     tries = len(coarse)
 
-    def full(delta: float, dur: float):
+    def full(delta: float, dur: float, off: int = None):
         delta, dur = float(delta), float(dur)
+        off = offset if off is None else off
         ev = [(t - delta, n) for t, n in all_events if 0 <= t - delta < dur]
-        rec = events_to_record(ev, dur, False, offset, comb, roll=roll)
-        fit = compare_fit(ev, offset, rec["partition"], dur, rev_seconds, comb)
+        rec = events_to_record(ev, dur, False, off, comb, stagger=not chords, roll=roll)
+        fit = compare_fit(ev, off, rec["partition"], dur, rev_seconds, comb)
         return fit["score"], delta, dur, rec, fit, ev
 
     best = None
@@ -495,10 +520,18 @@ def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
                 tries += 1
                 if cand[0] > best[0]:
                     best = cand
+    # tines up or down: re-test the best mapping with the runner-up transpositions
+    for off in offsets[1:]:
+        if tries >= max_tries:
+            break
+        cand = full(best[1], best[2], off)
+        tries += 1
+        if cand[0] > best[0]:
+            best = cand
     score, delta, dur, rec, fit, ev = best
     rec["events"] = [[round(t, 3), n] for t, n in sorted(ev)]
     rec["fit"] = {**fit, "tries": tries, "duration": round(float(dur), 2), "start": round(base + float(delta), 2),
-                  "nudge": round(base + float(delta) - start, 2), "offset": offset}
+                  "nudge": round(base + float(delta) - start, 2), "offset": rec["offset"]}
     return rec
 
 
@@ -1037,10 +1070,11 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
 def analyze(midi_bytes: bytes, duration: float = 25.0, start: float = 0.0,
             auto_transpose: bool = True, manual_offset: int = 0,
             comb: Comb = DEFAULT_COMB, roll: str = "before", rev_seconds: float = 25.0,
-            tracks: Optional[List[int]] = None, skyline: bool = False, melody_fill: bool = False) -> Dict:
+            tracks: Optional[List[int]] = None, skyline: bool = False, melody_fill: bool = False,
+            chords: bool = False) -> Dict:
     """MIDI window -> editable pitch x 86 partition plus mapping stats."""
     events = parse_midi_events(midi_bytes, duration, start, tracks, skyline, melody_fill)
-    rec = events_to_record(events, duration, auto_transpose, manual_offset, comb, roll=roll)
+    rec = events_to_record(events, duration, auto_transpose, manual_offset, comb, stagger=not chords, roll=roll)
     rec["events"] = [[round(t, 3), n] for t, n in sorted(events)]
     rec["fit"] = compare_fit(events, rec["offset"], rec["partition"], duration, rev_seconds, comb) if events else None
     return _finish_analysis(rec, duration, start)
@@ -1052,7 +1086,7 @@ RENDER_RATE = 8000       # review audio: 8 kHz mono, like the toy's own tinny vo
 
 def plan_song(midi_bytes: bytes, comb: Comb, tracks: Optional[List[int]], skyline: bool,
               duration: float, rev_seconds: float, roll: str, auto_transpose: bool,
-              manual_offset: int, melody_fill: bool = False) -> Dict:
+              manual_offset: int, melody_fill: bool = False, chords: bool = False) -> Dict:
     """Slice the whole song (selected tracks) into consecutive 86-beat sides
     with one transposition and one tempo. duration <= 0 auto-fits the tempo."""
     allev = parse_midi_events(midi_bytes, 36000.0, 0.0, tracks, skyline, melody_fill)
@@ -1062,12 +1096,12 @@ def plan_song(midi_bytes: bytes, comb: Comb, tracks: Optional[List[int]], skylin
     start, fit = max(0.0, first - 0.2), None
     if duration <= 0:
         rec = auto_fit(midi_bytes, start, rev_seconds, comb, roll, auto_transpose, manual_offset,
-                       12000, 0.35, 0.5, tracks, skyline, melody_fill)
+                       12000, 0.35, 0.5, tracks, skyline, melody_fill, chords)
         fit, duration, start = rec["fit"], rec["fit"]["duration"], rec["fit"]["start"]
-    offset = choose_transposition([n for _, n in allev], comb) if auto_transpose else manual_offset
+    offset = (fit["offset"] if fit else choose_transposition([n for _, n in allev], comb)) if auto_transpose else manual_offset
     n_sides = max(1, math.ceil((last - start + 0.01) / duration))
     sides = [analyze(midi_bytes, duration, start + k * duration, False, offset, comb, roll, rev_seconds,
-                     tracks, skyline, melody_fill) for k in range(n_sides)]
+                     tracks, skyline, melody_fill, chords) for k in range(n_sides)]
     return {"sides": sides, "duration": duration, "start": start, "offset": offset, "fit": fit,
             "note_count": sum(s["note_count"] for s in sides)}
 
@@ -1171,14 +1205,14 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
           partition_b: List[List[bool]] = None, title_b: str = "",
           engrave: bool = True, record_no: int = 6, comb: Comb = DEFAULT_COMB,
           overrides: Dict = None, overrides_b: Dict = None,
-          pin_radius: float = R_PIN, roll: str = "before") -> Dict:
+          pin_radius: float = R_PIN, roll: str = "before", chords: bool = False) -> Dict:
     """Partition(s) -> STL / SCAD / FPR files. Two-sided discs also get two
     flat-backed halves to print pins-up and glue back to back (no supports)."""
     label_a = title if engrave else ""
     label_b = title_b if engrave else ""
-    toy_fixes = stagger_partition(partition, comb, roll) + sum(make_playable(partition, comb))
+    toy_fixes = (0 if chords else stagger_partition(partition, comb, roll)) + sum(make_playable(partition, comb))
     if partition_b is not None:
-        toy_fixes += stagger_partition(partition_b, comb, roll) + sum(make_playable(partition_b, comb))
+        toy_fixes += (0 if chords else stagger_partition(partition_b, comb, roll)) + sum(make_playable(partition_b, comb))
     common = dict(marks=engrave, record_no=record_no, comb=comb, pin_radius=pin_radius)
     mesh, pin_count = build_mesh(partition, thickness, label_a, partition_b, label_b,
                                  overrides=overrides, overrides_b=overrides_b, **common)

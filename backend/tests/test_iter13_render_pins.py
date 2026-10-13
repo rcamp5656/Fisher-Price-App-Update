@@ -39,13 +39,13 @@ class TestRender:
         r = self._post(BABY1, tracks="7")
         assert r.status_code == 200, r.text
         assert r.headers["content-type"].startswith("audio/wav")
-        assert r.headers["X-Sample-Rate"] == "6000"
+        assert r.headers["X-Sample-Rate"] == "8000"
         sides = int(r.headers["X-Sides"])
         notes = int(r.headers["X-Notes"])
         assert sides >= 1
         assert notes > 0
         meta = self._wav_meta(r.content)
-        assert meta["rate"] == 6000
+        assert meta["rate"] == 8000
         assert meta["nchannels"] == 1
         assert meta["sampwidth"] == 2
         expected = sides * (25 + 0.6) + 1.5

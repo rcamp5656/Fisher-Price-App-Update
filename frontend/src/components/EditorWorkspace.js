@@ -4,7 +4,7 @@ import NoteEditor from "./NoteEditor";
 import TrackView from "./TrackView";
 import ComparePanel from "./ComparePanel";
 import { useMusicBox } from "../hooks/useMusicBox";
-import { countNotes, speedPct, grooveConflicts, chordConflicts, makePlayable, diffPartitions, BTN_LIFT } from "../lib/fp";
+import { countNotes, speedPct, grooveConflicts, chordConflicts, makePlayable, thinRepeats, diffPartitions, BTN_LIFT } from "../lib/fp";
 
 function Stat({ label, value, warn, testId }) {
   return (
@@ -16,7 +16,7 @@ function Stat({ label, value, warn, testId }) {
 }
 
 export default function EditorWorkspace({
-  sides, active, onActive, duration, revSeconds, onRevSeconds, loop, onLoop, roll = "before",
+  sides, active, onActive, duration, revSeconds, onRevSeconds, loop, onLoop, roll = "before", allowChords = false,
 }) {
   const side = sides.find((s) => s.key === active) || sides[0];
   const [view, setView] = useState("pitch");
@@ -28,7 +28,7 @@ export default function EditorWorkspace({
   const a = side.analysis;
   const pct = speedPct(duration, revSeconds);
   const repeats = useMemo(() => grooveConflicts(side.partition), [side.partition]);
-  const chords = useMemo(() => chordConflicts(side.partition), [side.partition]);
+  const chords = useMemo(() => (allowChords ? new Set() : chordConflicts(side.partition)), [side.partition, allowChords]);
   const conflicts = useMemo(() => new Set([...repeats, ...chords]), [repeats, chords]);
   const clashCount = repeats.size;
   const chordCount = chords.size;
@@ -45,7 +45,7 @@ export default function EditorWorkspace({
     return p && p.side === activeIdx ? p.beat : -1;
   };
   const seek = (beat) => { setCue(beat); play({ side: activeIdx, beat }); };
-  const fix = () => side.onChange(makePlayable(side.partition, roll));
+  const fix = () => side.onChange(allowChords ? thinRepeats(side.partition) : makePlayable(side.partition, roll));
 
   return (
     <div className="flex flex-col h-full p-4 gap-3" data-testid="editor-workspace">
