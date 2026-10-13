@@ -172,6 +172,22 @@ on an original Fisher-Price music box record player.
   stored on records. Editor flags beats exceeding `voices`.
 - Tested: iteration_12 … iteration_18.json (backend 129/129, all UI flows pass).
 
+### 2026-10-13 (session 3, part 4)
+- **Chord test disc** (`POST /api/testdisc`, button `test-disc-button`): one phrase as single notes
+  (beats 2-12), two-note chords (30-40), triads (58-68) → "CHORD TEST 1-2-3", voices=3.
+- **Album shelf**: RecordShelf groups album discs (blue, i/n tags), play-order chips, NEXT ▶ marker
+  for the disc after the open one, PLAYING on the open one.
+- **Melody confidence**: TrackPicker "rank by ear" top-3 chips (tap = audition, tap again = use)
+  and a "why:" line (mono / notes-per-sec / range / span / score) on the top-3 rows.
+- **Review timeline**: SongReview shows "side k of N · beat b" while the WAV plays; "OPEN THIS SPOT
+  IN THE EDITOR" sets auto-fit off, duration, window start and cues the beat in the editor.
+- **Splash + credits + source ZIP** (owner: Russ Campbell): `Splash.js` (2.5 s, click to skip) —
+  "Fisher-Price Record Maker · Dedicated To My Fiancée Barbara · Russ Campbell · Copyright 2026
+  Russ Campbell. All rights reserved."; footer credits; `GET /api/source.zip` = full project
+  (backend, frontend src + production build, standalone/splash.html HTML5/CSS3/JS, tests, README,
+  LICENSE; no .env/node_modules/.git). Credits also head every SCAD file and mesh-check.txt.
+- Tested: iteration_19.json, iteration_20.json (backend 137/137, UI green).
+
 ## Backlog / Remaining
 - P1: User validation of physical prints (pin height/width on the real toy).
 - P1: User to verify twin tines 8/9 sound the same pitch on their player (confirms comb mapping).
