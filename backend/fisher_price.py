@@ -753,6 +753,13 @@ MARK_H = 4.0            # numeral height
 DASH_W, DASH_T = 3.0, 0.8
 H_TEXT = 0.6
 _FONT = dict(family="DejaVu Sans", weight="bold")
+# Dedication line: a second, smaller arc inside the title (r 10.8-13.2), clear of the
+# side numeral (top r 10.5) and the title (bottom r 14.0)
+DEDICATION = "Dedicated To My Fiancée Barbara"
+DED_R = 12.0
+DED_H = 2.4
+DED_ARC = 240.0
+DED_CENTRE = 0.0        # centred on the right (3 o'clock), opposite the side numeral
 
 
 def _flip(H):
@@ -768,14 +775,14 @@ def _text_path(title: str):
     return TextPath((0, 0), title, size=10, prop=FontProperties(**_FONT))
 
 
-def _text_scale(title: str) -> float:
+def _text_scale(title: str, r: float = LABEL_R, h: float = LABEL_MAX_H, arc: float = LABEL_MAX_ARC) -> float:
     """Scale factor mapping font units -> mm so letters fit height and arc."""
     ext = _text_path(title).get_extents()
-    max_len = math.radians(LABEL_MAX_ARC) * LABEL_R
-    return min(LABEL_MAX_H / max(ext.height, 1e-6), max_len / max(ext.width, 1e-6))
+    max_len = math.radians(arc) * r
+    return min(h / max(ext.height, 1e-6), max_len / max(ext.width, 1e-6))
 
 
-def _text_shape(title: str):
+def _text_shape(title: str, r: float = LABEL_R, h: float = LABEL_MAX_H, arc: float = LABEL_MAX_ARC):
     """Flat text outline, scaled, centred on x=0, baseline band centred on y=0."""
     from shapely.geometry import Polygon
     from shapely import affinity
@@ -791,12 +798,12 @@ def _text_shape(title: str):
     if shape is None or shape.is_empty:
         return None
     minx, miny, maxx, maxy = shape.bounds
-    s = _text_scale(title)
+    s = _text_scale(title, r, h, arc)
     shape = affinity.scale(shape, s, s, origin=(0, 0))
     return affinity.translate(shape, -(minx + maxx) / 2 * s, -(miny + maxy) / 2 * s)
 
 
-def _bend(shape):
+def _bend(shape, r: float = LABEL_R, centre: float = ARC_CENTRE):
     """Wrap a flat shape around the label arc: x -> angle, y -> radius.
     Centred on ARC_CENTRE (left side, like the factory records), reading
     clockwise with letter tops facing outward."""
@@ -804,9 +811,8 @@ def _bend(shape):
 
     def warp(coords):
         x, y = coords[:, 0], coords[:, 1]
-        theta = ARC_CENTRE - x / LABEL_R
-        r = LABEL_R + y
-        return np.column_stack([r * np.cos(theta), r * np.sin(theta)])
+        theta = centre - x / r
+        return np.column_stack([(r + y) * np.cos(theta), (r + y) * np.sin(theta)])
 
     dense = shapely.segmentize(shape, 0.25)
     return shapely.transform(dense, warp)
@@ -850,26 +856,31 @@ def _extrude_label(shapes, H: float) -> List:
     return meshes
 
 
-def _text_meshes(title: str, H: float, number: int = 0) -> List:
+def _text_meshes(title: str, H: float, number: int = 0, dedication: str = DEDICATION) -> List:
     title = (title or "").strip()
     shapes = []
     if title:
         shape = _text_shape(title)
         if shape is not None:
             shapes.append(_bend(shape))
+    if dedication:
+        ded = _text_shape(dedication, DED_R, DED_H, DED_ARC)
+        if ded is not None:
+            shapes.append(_bend(ded, DED_R, DED_CENTRE))
     if number:
         shapes.extend(_side_marks(number))
     return _extrude_label(shapes, H)
 
 
-def label_glyphs(title: str) -> List[Tuple[str, float, float]]:
+def label_glyphs(title: str, r: float = LABEL_R, h: float = LABEL_MAX_H, arc: float = LABEL_MAX_ARC,
+                 centre: float = ARC_CENTRE) -> List[Tuple[str, float, float]]:
     """Per-character (char, angle_deg, size_mm) placements for OpenSCAD."""
     title = (title or "").strip()
     if not title:
         return []
-    s = _text_scale(title)
+    s = _text_scale(title, r, h, arc)
     full = _text_path(title).get_extents()
-    centre = (full.x0 + full.x1) / 2
+    x_centre = (full.x0 + full.x1) / 2
     out = []
     prev_x1 = 0.0
     for i, ch in enumerate(title):
@@ -878,7 +889,7 @@ def label_glyphs(title: str) -> List[Tuple[str, float, float]]:
         ext = _text_path(title[: i + 1]).get_extents()
         x_mid = (prev_x1 + ext.x1) / 2 if i else (ext.x0 + ext.x1) / 2
         prev_x1 = ext.x1
-        angle = math.degrees(ARC_CENTRE) - math.degrees((x_mid - centre) * s / LABEL_R)
+        angle = math.degrees(centre) - math.degrees((x_mid - x_centre) * s / r)
         out.append((ch, round(angle, 2), round(float(10 * s), 3)))
     return out
 
@@ -993,6 +1004,7 @@ twoSided = {TWO_SIDED};
 labelA = "{TITLE_A}";
 labelB = "{TITLE_B}";
 labelR = 16.3;
+dedR = {DED_R};       // "{DEDICATION}" — small arc inside the title
 markR = 8.5;
 hText = 0.6;
 pinDepth = {PIN_R};
@@ -1109,11 +1121,15 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
         lines.extend(_scad_pins(partition_b, "true", comb, overrides_b))
     labels = [f'\t\tglyph("{_scad_str(ch)}",{ang},{size},false);'
               for ch, ang, size in label_glyphs(label_a)]
+    ded = lambda side: [f'\t\tmark("{_scad_str(ch)}",{ang},dedR,{size},{side});'
+                        for ch, ang, size in label_glyphs(DEDICATION, DED_R, DED_H, DED_ARC, DED_CENTRE)]
+    labels += ded("false")
     if marks:
         labels += [f'\t\tmark("{record_no}",180,markR,3.2,false);', '\t\tdash(false);']
     if partition_b is not None:
         labels += [f'\t\tglyph("{_scad_str(ch)}",{ang},{size},true);'
                    for ch, ang, size in label_glyphs(label_b)]
+        labels += ded("true")
         if marks:
             labels += [f'\t\tmark("{record_no}",180,markR,3.2,true);', '\t\tdash(true);']
     from datetime import datetime
@@ -1123,6 +1139,8 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
         PIN_R=pin_radius,
         PIN_BASE=PIN_BASE,
         PIN_SINK=PIN_SINK,
+        DED_R=DED_R,
+        DEDICATION=_scad_str(DEDICATION),
         TWO_SIDED="true" if partition_b is not None else "false",
         TITLE_A=_scad_str(title),
         TITLE_B=_scad_str(title_b) if partition_b is not None else "",

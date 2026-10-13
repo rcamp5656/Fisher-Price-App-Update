@@ -38,7 +38,74 @@ export function pluck(ctx, dest, freq, when) {
   noise.start(when);
 }
 
-export const newCtx = () => new (window.AudioContext || window.webkitAudioContext)();
+// One AudioContext for the whole app (Chrome/Edge on Windows go silent when contexts are
+// opened and closed per play). Every player gets its own Channel = a gain node on the master bus.
+const VOLUME_KEY = "fp-volume";
+let shared = null;
+let master = null;
+const watchers = new Set();
+const notify = () => watchers.forEach((fn) => fn());
+export const getVolume = () => {
+  const v = Number(localStorage.getItem(VOLUME_KEY));
+  return Number.isFinite(v) && localStorage.getItem(VOLUME_KEY) !== null ? Math.min(1, Math.max(0, v)) : 0.8;
+};
+export function setVolume(v) {
+  localStorage.setItem(VOLUME_KEY, String(v));
+  if (master) master.gain.setTargetAtTime(v * 1.5, shared.currentTime, 0.02);
+  notify();
+}
+export function audioEngine() {
+  if (!shared || shared.state === "closed") {
+    shared = new (window.AudioContext || window.webkitAudioContext)();
+    master = shared.createGain();
+    master.gain.value = getVolume() * 1.5;
+    master.connect(shared.destination);
+    shared.onstatechange = notify;
+    notify();
+  }
+  if (shared.state === "suspended") shared.resume().then(notify, notify);
+  return shared;
+}
+// "idle" (not created yet) · "running" · "suspended" (browser blocked it) · "closed"
+export const audioState = () => (shared ? shared.state : "idle");
+export const audioSampleRate = () => (shared ? shared.sampleRate : 0);
+export function watchAudio(fn) { watchers.add(fn); return () => watchers.delete(fn); }
+if (typeof window !== "undefined") {
+  ["pointerdown", "keydown", "touchend"].forEach((ev) => window.addEventListener(ev, () => audioEngine(), { passive: true, capture: true }));
+}
+
+class Channel {
+  constructor() {
+    this.ctx = audioEngine();
+    this.destination = this.ctx.createGain();
+    this.destination.connect(master);
+  }
+  get currentTime() { return this.ctx.currentTime; }
+  get state() { return this.ctx.state; }
+  get sampleRate() { return this.ctx.sampleRate; }
+  createGain() { return this.ctx.createGain(); }
+  createOscillator() { return this.ctx.createOscillator(); }
+  createBiquadFilter() { return this.ctx.createBiquadFilter(); }
+  createBufferSource() { return this.ctx.createBufferSource(); }
+  createBuffer(...a) { return this.ctx.createBuffer(...a); }
+  resume() { return this.ctx.resume(); }
+  close() {
+    const g = this.destination;
+    g.gain.cancelScheduledValues(this.ctx.currentTime);
+    g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.01);
+    setTimeout(() => g.disconnect(), 80);
+  }
+}
+export const newCtx = () => new Channel();
+
+// short test pluck so the user can confirm the browser is letting sound through
+export function testTone() {
+  const ch = newCtx();
+  pluck(ch, ch.destination, midiToFreq(84 + REAL_PITCH_OFFSET), ch.currentTime + 0.02);
+  pluck(ch, ch.destination, midiToFreq(88 + REAL_PITCH_OFFSET), ch.currentTime + 0.25);
+  pluck(ch, ch.destination, midiToFreq(91 + REAL_PITCH_OFFSET), ch.currentTime + 0.5);
+  setTimeout(() => ch.close(), 3000);
+}
 
 // sequence: array of partitions played back to back (side A, then side B)
 export function useMusicBox(sequence, revSeconds, loop) {

@@ -3,6 +3,7 @@ import { Play, Square, RotateCcw, Gauge, AlertTriangle, Repeat, Shuffle, FileMus
 import NoteEditor from "./NoteEditor";
 import TrackView from "./TrackView";
 import ComparePanel from "./ComparePanel";
+import SoundCheck from "./SoundCheck";
 import { useMusicBox } from "../hooks/useMusicBox";
 import { countNotes, speedPct, grooveConflicts, chordConflicts, makePlayable, thinRepeats, diffPartitions, BTN_LIFT } from "../lib/fp";
 
@@ -198,6 +199,7 @@ export default function EditorWorkspace({
         >
           <RotateCcw className="h-4 w-4" /> Reset
         </button>
+        <SoundCheck compact />
         <label className="font-mono text-xs flex items-center gap-2 ml-auto">
           <Gauge className="h-4 w-4" /> Toy speed
           <input

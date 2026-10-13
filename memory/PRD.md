@@ -188,6 +188,22 @@ on an original Fisher-Price music box record player.
   LICENSE; no .env/node_modules/.git). Credits also head every SCAD file and mesh-check.txt.
 - Tested: iteration_19.json, iteration_20.json (backend 137/137, UI green).
 
+### 2026-10-13 (session 4)
+- **No-sound fix**: one shared AudioContext for the whole app (`audioEngine()` in useMusicBox.js; every player
+  gets a `Channel` gain node — `newCtx()` keeps its old call shape). Chrome/Edge on Windows went silent when
+  contexts were opened/closed per play. Unlocked on first pointer/key; `SoundCheck` (TEST chime, state
+  "SOUND ON/BLOCKED/MUTED", volume slider stored in localStorage) in the Load card + editor transport.
+- **Barbara label art**: dedication "Dedicated To My Fiancée Barbara" as a raised curved arc (r 12, 2.4 mm,
+  centred 3 o'clock, clear of numeral/title) on every disc side (mesh + SCAD `mark(..., dedR, ...)`), curved
+  `<textPath>` + footer line on the sleeve-card SVG. `GET /api/conversions/{id}/label.svg` + SLEEVE CARD button.
+- **Test-disc notes**: `GET/PUT /api/defaults` {voices, note, tested_at}; `TestDiscNotes` card under the test
+  disc button (ONE/TWO/THREE + note → default "notes at once", applied on load).
+- **Album sleeve sheet**: `GET /api/album/{id}/sleeves` (HTML, A4 pages of 8 numbered 100×60 cards with i/n
+  badge, play order) + `sleeves/` folder in the album ZIP; PRINT SLEEVE SHEET button in AlbumPanel.
+- **Offline build**: `/app/launchers/` → ZIP root gets start-windows.bat, start-mac.command, start-linux.sh
+  (0755), BUILD-GUIDE.txt; `backend/requirements-local.txt` (public PyPI only). README updated.
+- Verified: curl on all new endpoints, pytest (analyze/press/api/pack green), browser smoke (shared ctx, save default).
+
 ## Backlog / Remaining
 - P1: User validation of physical prints (pin height/width on the real toy).
 - P1: User to verify twin tines 8/9 sound the same pitch on their player (confirms comb mapping).

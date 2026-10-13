@@ -1,0 +1,41 @@
+Fisher-Price Record Maker — offline build guide
+================================================
+Dedicated To My Fiancée Barbara · Copyright 2026 Russ Campbell. All rights reserved.
+
+ONE-CLICK START
+  Windows : double-click  start-windows.bat
+  macOS   : double-click  start-mac.command   (first time: right-click → Open, then "Open" to allow it)
+  Linux   : ./start-linux.sh
+
+  The script checks for Python, Node.js and MongoDB, creates the two .env files,
+  installs the packages (first run: a few minutes), starts the backend on port 8001
+  and the web app on port 3000, then opens http://localhost:3000 in your browser.
+
+WHAT YOU NEED INSTALLED ONCE
+  Python 3.10 or newer ....... https://www.python.org/downloads/   (Windows: tick "Add python.exe to PATH")
+  Node.js LTS ................ https://nodejs.org/
+  MongoDB Community Server ... https://www.mongodb.com/try/download/community
+                               Windows: choose "Install MongoDB as a Service" — it then starts by itself.
+                               macOS:   brew tap mongodb/brew && brew install mongodb-community
+                               (Records, albums, the comb profile and your test-disc default are stored there.)
+
+STOPPING
+  Windows: close the two black windows ("FP Backend", "FP Frontend").
+  macOS/Linux: press Ctrl+C in the terminal that opened.
+
+PROBLEMS
+  "python is not recognized"  → reinstall Python with "Add to PATH" ticked, or open a new terminal.
+  Port 3000 / 8001 in use     → close the other app or edit the ports in the start script AND frontend/.env.
+  Blank page / "network error"→ the backend is not running; check the FP Backend window / data-backend.log.
+  No sound in the preview     → press the TEST button next to the play controls; the browser must allow
+                                audio on the page (click anywhere once) and the tab must not be muted.
+  Cannot save records         → MongoDB is not running on mongodb://localhost:27017 (see above).
+
+MANUAL START (if you prefer typing)
+  backend : cd backend && python -m venv .venv && (.venv\Scripts\activate | source .venv/bin/activate)
+            pip install -r requirements-local.txt
+            echo MONGO_URL=mongodb://localhost:27017 > .env && echo DB_NAME=fisher_price >> .env
+            uvicorn server:app --host 0.0.0.0 --port 8001
+  frontend: cd frontend && npm install --legacy-peer-deps
+            echo REACT_APP_BACKEND_URL=http://localhost:8001 > .env
+            npm start            (or  npm run build  for a static HTML5/CSS3/JS bundle in frontend/build)

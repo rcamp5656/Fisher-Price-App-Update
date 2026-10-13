@@ -188,6 +188,26 @@ async def put_numbering(req: NumberingRequest):
     return {"start": req.start}
 
 
+class DefaultsRequest(BaseModel):
+    voices: int = Field(..., ge=1, le=16)
+    note: str = Field("", max_length=400)
+
+
+# "notes at once" default learned from the printed chord test disc
+@api_router.get("/defaults")
+async def get_defaults():
+    doc = await db.settings.find_one({"_id": "defaults"}, {"_id": 0})
+    return doc or {"voices": None, "note": "", "tested_at": None}
+
+
+@api_router.put("/defaults")
+async def put_defaults(req: DefaultsRequest):
+    voices = req.voices if req.voices in (1, 2, 3, 16) else 1
+    doc = {"voices": voices, "note": req.note.strip(), "tested_at": datetime.now(timezone.utc).isoformat()}
+    await db.settings.update_one({"_id": "defaults"}, {"$set": doc}, upsert=True)
+    return doc
+
+
 async def _record_no(title: str) -> int:
     """Reuse the number of an earlier pressing with the same title, else the
     next free number at or above the user's numbering start."""
@@ -590,38 +610,50 @@ async def album_zip(album_id: str):
             if doc.get("fpr_b"):
                 z.writestr(f"fpr/{stem}-B.fpr", doc["fpr_b"])
             z.writestr(f"mesh-check/{stem}.txt", _mesh_report(doc))
+            z.writestr(f"sleeves/{stem}-label.svg", _label_card(doc, (doc.get("album_index") or 0, doc.get("album_count") or 0) if doc.get("album_index") else None))
             side_txt = f"side {disc['sides'][0]}" + (f" (A) / side {disc['sides'][1]} (B)" if len(disc["sides"]) > 1 else "")
             lines.append(f"  Record #{disc.get('record_no') or '-'}  {stem}.stl  —  {side_txt}  —  {disc['note_count']} pins")
-        lines += ["", "Each side is one revolution (86 beats). Flip two-sided discs to continue; load the next disc for the next part."]
+        _, docs = await _album_docs(album_id)
+        z.writestr("sleeves/sleeve-sheet.html", _sleeve_sheet(album, docs))
+        lines += ["", "sleeves/sleeve-sheet.html — open in a browser and print: numbered 100 x 60 mm sleeve labels (8 per A4 page) so the discs stay in order.",
+                  "Each side is one revolution (86 beats). Flip two-sided discs to continue; load the next disc for the next part."]
         z.writestr("README.txt", "\n".join(lines) + "\n")
     return Response(buf.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{name}-album.zip"'})
 
 
 CREDITS = "Fisher-Price Record Maker - Dedicated To My Fiancee Barbara - Copyright 2026 Russ Campbell. All rights reserved."
-_SRC_SKIP = {"node_modules", ".git", "build", "__pycache__", ".pytest_cache", "test_reports", ".emergent"}
+_SRC_SKIP = {"node_modules", ".git", "build", "__pycache__", ".pytest_cache", "test_reports", ".emergent", "launchers", ".venv", "data"}
+_LAUNCHERS = {"start-windows.bat": False, "start-mac.command": True, "BUILD-GUIDE.txt": False}
 _SRC_README = """Fisher-Price Record Maker — complete project source
 =====================================================
 {credits}
 
+ONE-CLICK START (no typing)
+  Windows : double-click  start-windows.bat
+  macOS   : double-click  start-mac.command
+  Linux   : ./start-linux.sh
+  Needs Python 3.10+, Node.js LTS and MongoDB Community installed once — see BUILD-GUIDE.txt.
+
 What is inside
   backend/        FastAPI + Python geometry (fisher_price.py: MIDI -> 86-beat disc -> STL/SCAD/FPR, auto-fit, albums, 8 kHz review audio)
+                  requirements-local.txt = the short, public-PyPI package list the start scripts install
   frontend/       React 19 app (HTML5 / CSS3 / JS): editor, 3D preview, track picker, album panel, splash screen
   frontend/build/ production build of the web app (static HTML5/CSS3/JS) when present
   standalone/     splash.html — the splash screen as a plain HTML5 / CSS3 / JS page
   tests/, backend/tests/   pytest suites and sample MIDI files
   memory/         product notes (PRD.md)
 
-Run it locally
+Run it by hand
   1. MongoDB running locally (or any MONGO_URL)
-  2. backend:  cd backend && pip install -r requirements.txt
+  2. backend:  cd backend && pip install -r requirements-local.txt
                create backend/.env with  MONGO_URL=mongodb://localhost:27017  and  DB_NAME=fisher_price
                uvicorn server:app --host 0.0.0.0 --port 8001
-  3. frontend: cd frontend && yarn install
+  3. frontend: cd frontend && npm install --legacy-peer-deps
                create frontend/.env with  REACT_APP_BACKEND_URL=http://localhost:8001
-               yarn start   (or  yarn build  for the static HTML5/CSS3/JS bundle in frontend/build)
+               npm start   (or  npm run build  for the static HTML5/CSS3/JS bundle in frontend/build)
 
-Secrets (.env files) are NOT included on purpose.
+Secrets (.env files) are NOT included on purpose — the start scripts create local ones.
 """
 
 
@@ -648,6 +680,14 @@ async def source_zip():
                     z.write(p, f"fisher-price-record-maker/frontend/build/{p.relative_to(build)}")
         z.writestr("fisher-price-record-maker/README.txt", _SRC_README.format(credits=CREDITS))
         z.writestr("fisher-price-record-maker/LICENSE.txt", CREDITS + "\n")
+        for fname, executable in _LAUNCHERS.items():
+            data = (root / "launchers" / fname).read_bytes()
+            targets = [fname] + (["start-linux.sh"] if fname == "start-mac.command" else [])
+            for t in targets:
+                info = zipfile.ZipInfo(f"fisher-price-record-maker/{t}")
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = (0o755 if executable else 0o644) << 16
+                z.writestr(info, data)
     return Response(buf.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": 'attachment; filename="fisher-price-record-maker-source.zip"'})
 
@@ -768,26 +808,102 @@ async def download_fpr(conversion_id: str, side: str = "a"):
     )
 
 
-def _label_card(doc) -> str:
-    """Printable label card (SVG, 100 x 60 mm) for the record sleeve."""
+def _label_card(doc, album=None) -> str:
+    """Printable label card (SVG, 100 x 60 mm) for the record sleeve.
+    album = (index, count) adds the sleeve number so an album stays in order."""
     def esc(t):
         return (t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     notes = " ".join(n["name"] for n in doc.get("notes_used", []))
     side_b = (f'<text x="8" y="40" font-size="4" fill="#457B9D">SIDE B</text>'
               f'<text x="8" y="46" font-size="6" font-weight="700">{esc(doc.get("title_b"))}</text>'
               if doc.get("two_sided") else "")
+    badge = ""
+    if album:
+        i, n = album
+        badge = (f'<rect x="60" y="3" width="13" height="8" rx="1.5" fill="#1D3557"/>'
+                 f'<text x="66.5" y="8.8" font-size="4.5" font-weight="700" fill="#F4F1EA" text-anchor="middle">{i}/{n}</text>'
+                 f'<text x="66.5" y="15" font-size="2.6" fill="#457B9D" text-anchor="middle">disc {i} of {n}</text>')
+    uid = re.sub(r"[^a-z0-9]", "", str(doc.get("id", "x")))[:8] or "x"
+    # dedication bent around the little disc, like the raised ring on the record label
+    ded = (f'<defs><path id="ded-{uid}" d="M 73 14 A 11 11 0 1 1 95 14 A 11 11 0 1 1 73 14"/></defs>'
+           f'<text font-size="2.1" fill="#1D3557" letter-spacing="0.15"><textPath href="#ded-{uid}" startOffset="25%" text-anchor="middle">'
+           f'{esc(fp.DEDICATION)}</textPath></text>')
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm" viewBox="0 0 100 60" font-family="DejaVu Sans, Arial, sans-serif" fill="#1D3557">
   <rect x="0.5" y="0.5" width="99" height="59" rx="3" fill="#F4F1EA" stroke="#1D3557" stroke-width="1"/>
   <circle cx="84" cy="14" r="9" fill="#B9A9E3" stroke="#1D3557" stroke-width="0.8"/>
   <circle cx="84" cy="14" r="1.5" fill="#F4F1EA" stroke="#1D3557" stroke-width="0.5"/>
+  {ded}
   <text x="84" y="31" font-size="5" text-anchor="middle" font-weight="700">RECORD #{doc.get("record_no") or "-"}</text>
+  {badge}
   <text x="8" y="12" font-size="3.5" fill="#457B9D">FISHER-PRICE MUSIC BOX RECORD PLAYER</text>
   <text x="8" y="22" font-size="4" fill="#457B9D">SIDE A</text>
   <text x="8" y="29" font-size="6" font-weight="700">{esc(doc.get("title"))}</text>
   {side_b}
-  <text x="8" y="55" font-size="2.8" fill="#457B9D">{doc.get("pin_count")} pins · {doc.get("thickness")} mm · {doc.get("duration")}s window · {esc(notes)}</text>
+  <text x="8" y="51.5" font-size="2.6" fill="#457B9D" font-style="italic">{esc(fp.DEDICATION)} · © 2026 Russ Campbell</text>
+  <text x="8" y="55.5" font-size="2.8" fill="#457B9D">{doc.get("pin_count")} pins · {doc.get("thickness")} mm · {doc.get("duration")}s window · {esc(notes)}</text>
 </svg>
 '''
+
+
+_SLEEVES_HTML = """<!doctype html>
+<html><head><meta charset="utf-8"><title>{title} — sleeve labels</title>
+<style>
+  @page {{ size: A4 portrait; margin: 10mm; }}
+  body {{ margin: 0; font-family: "DejaVu Sans", Arial, sans-serif; color: #1D3557; background: #fff; }}
+  .page {{ width: 190mm; display: grid; grid-template-columns: 1fr 1fr; gap: 6mm 8mm; padding: 4mm 0; page-break-after: always; }}
+  .page:last-child {{ page-break-after: auto; }}
+  svg {{ width: 90mm; height: 54mm; display: block; }}
+  h1 {{ font-size: 14px; margin: 0 0 2mm; }}
+  p.note {{ font-size: 10px; margin: 0 0 3mm; color: #457B9D; }}
+  .bar {{ display: flex; gap: 8px; align-items: center; margin-bottom: 4mm; }}
+  button {{ font: 700 12px "DejaVu Sans", Arial; padding: 6px 12px; border: 2px solid #1D3557; background: #E9C46A; border-radius: 6px; cursor: pointer; }}
+  @media print {{ .bar {{ display: none; }} }}
+</style></head>
+<body>
+<div class="bar"><h1>{title} — {count} numbered sleeve labels</h1><button onclick="window.print()">PRINT</button></div>
+<p class="note">Cut along the card borders (100 × 60 mm). Play order: {order}. {dedication} · © 2026 Russ Campbell</p>
+{pages}
+</body></html>
+"""
+
+
+def _sleeve_sheet(album, docs) -> str:
+    cards = [_label_card(d, (i + 1, len(docs))) for i, d in enumerate(docs)]
+    pages = []
+    for p in range(0, len(cards), 8):
+        pages.append('<div class="page">' + "\n".join(cards[p:p + 8]) + "</div>")
+    order = " → ".join(f"#{d.get('record_no') or '-'}" for d in docs) or "-"
+    return _SLEEVES_HTML.format(title=album["title"].replace("<", "&lt;"), count=len(docs), order=order,
+                                dedication=fp.DEDICATION, pages="\n".join(pages))
+
+
+async def _album_docs(album_id: str):
+    album = await db.albums.find_one({"id": album_id}, {"_id": 0})
+    if not album:
+        raise HTTPException(404, "Album not found")
+    docs = []
+    for disc in album.get("discs", []):
+        doc = await db.conversions.find_one({"id": disc["id"]}, {"_id": 0, "stl_b64": 0, "stl_half_a_b64": 0, "stl_half_b_b64": 0, "scad": 0, "fpr": 0, "fpr_b": 0})
+        if doc:
+            docs.append(doc)
+    return album, docs
+
+
+@api_router.get("/album/{album_id}/sleeves")
+async def album_sleeves(album_id: str):
+    """One printable sheet (HTML, A4 pages of 8 cards) of numbered sleeve labels for the whole album."""
+    album, docs = await _album_docs(album_id)
+    return Response(_sleeve_sheet(album, docs), media_type="text/html; charset=utf-8")
+
+
+@api_router.get("/conversions/{conversion_id}/label.svg")
+async def download_label(conversion_id: str):
+    doc = await db.conversions.find_one({"id": conversion_id}, {"_id": 0, "stl_b64": 0, "stl_half_a_b64": 0, "stl_half_b_b64": 0, "scad": 0, "fpr": 0, "fpr_b": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    album = (doc["album_index"], doc["album_count"]) if doc.get("album_index") and doc.get("album_count") else None
+    return Response(_label_card(doc, album), media_type="image/svg+xml",
+                    headers={"Content-Disposition": f'inline; filename="{_safe_name(doc)}-label.svg"'})
 
 
 _PACK_README = """Fisher-Price Music Box Record Maker - print pack
@@ -863,7 +979,7 @@ async def download_pack(conversion_id: str):
         z.writestr(f"{name}.fpr", doc["fpr"])
         if doc.get("fpr_b"):
             z.writestr(f"{name}-sideB.fpr", doc["fpr_b"])
-        z.writestr(f"{name}-label.svg", _label_card(doc))
+        z.writestr(f"{name}-label.svg", _label_card(doc, (doc["album_index"], doc["album_count"]) if doc.get("album_index") and doc.get("album_count") else None))
         z.writestr("mesh-check.txt", _mesh_report(doc))
         z.writestr("README.txt", _PACK_README.format(
             no=doc.get("record_no") or "-", title=doc.get("title"), name=name,

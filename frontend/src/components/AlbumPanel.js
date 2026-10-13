@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { Album, Loader2, Download, Disc3, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Album, Loader2, Download, Disc3, AlertTriangle, CheckCircle2, Printer } from "lucide-react";
 import { BTN_BASE, BTN_DISABLED } from "../lib/fp";
 
 export default function AlbumPanel({ api, file, settings, tracks, skyline, melodyFill = false, revSeconds, disabled, onOpenDisc }) {
@@ -96,12 +96,21 @@ export default function AlbumPanel({ api, file, settings, tracks, skyline, melod
             ))}
           </ol>
           {album.status === "done" && (
-            <a
-              data-testid="album-zip-link" href={`${api}/album/${album.id}/zip`}
-              className={`${BTN_BASE} text-sm py-2 bg-[#2A9D8F] text-white`}
-            >
-              <Download className="h-4 w-4" /> DOWNLOAD ALBUM ZIP ({album.total_discs} STLs)
-            </a>
+            <>
+              <a
+                data-testid="album-zip-link" href={`${api}/album/${album.id}/zip`}
+                className={`${BTN_BASE} text-sm py-2 bg-[#2A9D8F] text-white`}
+              >
+                <Download className="h-4 w-4" /> DOWNLOAD ALBUM ZIP ({album.total_discs} STLs)
+              </a>
+              <a
+                data-testid="album-sleeves-link" href={`${api}/album/${album.id}/sleeves`} target="_blank" rel="noreferrer"
+                className={`${BTN_BASE} text-sm py-2 bg-white hover:bg-[#E9C46A]`}
+                title="One printable sheet of numbered 100 x 60 mm sleeve labels (8 per A4 page)"
+              >
+                <Printer className="h-4 w-4" /> PRINT SLEEVE SHEET (1 … {album.total_discs} NUMBERED)
+              </a>
+            </>
           )}
         </div>
       )}

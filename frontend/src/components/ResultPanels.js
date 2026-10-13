@@ -1,5 +1,5 @@
 import React from "react";
-import { Download, FileCode, FileText, CheckCircle2, AlertTriangle, History, RotateCcw, Share2, Package, ShieldCheck } from "lucide-react";
+import { Download, FileCode, FileText, CheckCircle2, AlertTriangle, History, RotateCcw, Share2, Package, ShieldCheck, Tag } from "lucide-react";
 import { toast } from "sonner";
 import { BTN_BASE, BTN_LIFT, CARD } from "../lib/fp";
 
@@ -57,6 +57,9 @@ export function DownloadPanel({ api, result }) {
       </div>
       <a data-testid="download-pack-button" href={`${base}/pack`} className={`${SMALL} bg-[#1D3557] text-white`.replace("bg-white text-[#1D3557]", "")}>
         <Package className="h-4 w-4" /> PRINT PACK (.ZIP — STL + SCAD + FPR + LABEL CARD)
+      </a>
+      <a data-testid="download-label-button" href={`${base}/label.svg`} target="_blank" rel="noreferrer" className={`${SMALL} text-xs py-2`} title="100 x 60 mm sleeve card with the curved dedication — opens in a new tab, print from there">
+        <Tag className="h-4 w-4" /> SLEEVE CARD (BARBARA LABEL ART)
       </a>
       <button
         type="button"

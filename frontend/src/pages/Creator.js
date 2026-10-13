@@ -8,6 +8,8 @@ import SettingsPanel from "../components/SettingsPanel";
 import EditorWorkspace from "../components/EditorWorkspace";
 import SongOverview from "../components/SongOverview";
 import LibraryPicker from "../components/LibraryPicker";
+import SoundCheck from "../components/SoundCheck";
+import TestDiscNotes from "../components/TestDiscNotes";
 import CombEditor from "../components/CombEditor";
 import { DownloadPanel, SpecSheet, HistoryPanel } from "../components/ResultPanels";
 import PrintGuide from "../components/PrintGuide";
@@ -185,6 +187,13 @@ export default function Creator() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const [testBusy, setTestBusy] = useState(false);
+  const [defaults, setDefaults] = useState(null);
+  useEffect(() => {
+    axios.get(`${API}/defaults`).then(({ data }) => {
+      setDefaults(data);
+      if (data.voices) set({ voices: data.voices, chords: data.voices > 1 });
+    }).catch(() => {});
+  }, []);
   const makeTestDisc = async () => {
     setTestBusy(true); setError(null);
     try {
@@ -396,6 +405,7 @@ export default function Creator() {
               title="One phrase pressed three ways — single notes, two-note chords, triads — so one print tells you what the comb can handle">
               <FlaskConical className="h-4 w-4" /> {testBusy ? "PRESSING TEST DISC…" : "PRESS A CHORD TEST DISC (1·2·3 NOTES)"}
             </button>
+            <TestDiscNotes api={API} saved={defaults} onSaved={(d) => { setDefaults(d); set({ voices: d.voices, chords: d.voices > 1 }); }} />
             {scans.a && (
               <TrackPicker scan={scans.a} tracks={tracks.a} onTracks={(v) => setTracks((p) => ({ ...p, a: v }))} skyline={skyline} onSkyline={setSkyline} melodyFill={melodyFill} onMelodyFill={setMelodyFill} />
             )}
@@ -414,6 +424,7 @@ export default function Creator() {
               </>
             )}
             <LibraryPicker duration={s.duration} onPick={onPickTune} />
+            <SoundCheck />
           </div>
 
           <div className={`${CARD} p-5 flex flex-col gap-4`}>
