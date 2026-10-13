@@ -29,7 +29,9 @@ H_GROOVE = 1.2        # depth of the note grooves
 OVERLAP = 0.2         # modelling overlap to keep booleans manifold
 R_CENTER = 3.22       # centre spindle hole radius
 HEAD_OFFSET = 2.0     # angular lead of the playback head
-R_PIN = 0.8           # pin height: apex protrusion into the groove (equilateral triangle, side = h / 0.866)
+R_PIN = 0.8           # pin height: apex protrusion into the groove
+PIN_BASE = 1.6        # pin base length along the groove wall (flatter ramp, reads as part of the wall)
+PIN_SINK = 0.5        # how deep the pin base is buried in the wall so slicers never open a seam
 
 # Groove inner radii (11 grooves, each holds two note tracks)
 GROOVE_INNERS = [28.15, 30.89, 33.71, 36.425, 39.225, 42,
@@ -168,13 +170,16 @@ def scan_tracks(midi_bytes: bytes) -> Dict:
         density = len(onsets) / max(span, 1.0)
         notes = [n for _, n, _, _ in ev]
         mean = sum(notes) / len(notes)
-        # melody-likeness: monophonic, singable register, ~1-4 notes/s, lasts most of the song
+        # melody-likeness: monophonic, singable register (bass lines score ~0),
+        # ~1-4 notes/s, varied pitches, lasts most of the song
         score = 0.0
         if not drums:
-            score += 30 * max(0.0, 1 - (poly - 1) * 2)
-            score += 25 * max(0.0, 1 - abs(mean - 69) / 24)
-            score += 25 * (1 - min(1.0, abs(math.log2(max(density, 0.05) / 2.0)) / 2.5))
-            score += 20 * min(1.0, span / max(total, 1.0))
+            variety = len(set(notes)) / max(1, min(len(notes), 40))
+            score += 25 * max(0.0, 1 - (poly - 1) * 2)
+            score += 30 * math.exp(-((mean - 72) / 11) ** 2)
+            score += 20 * (1 - min(1.0, abs(math.log2(max(density, 0.05) / 2.0)) / 2.5))
+            score += 10 * min(1.0, variety * 4)
+            score += 15 * min(1.0, span / max(total, 1.0))
         step = max(1, len(ev) // 300)
         tracks.append({
             "index": ti,
@@ -738,12 +743,12 @@ def _groove_cutters(H: float) -> List:
 
 
 def _cam_polygon(direction: int, depth: float):
-    """Plan-view pin: small equilateral triangle sitting on the groove wall,
-    apex pointing into the groove at the beat angle (base centred on y=0)."""
+    """Plan-view pin: isosceles triangle whose base (PIN_BASE long) is buried
+    PIN_SINK into the groove wall, apex `depth` into the groove at the beat."""
     from shapely.geometry import Polygon
     d = direction
-    half = depth / math.sqrt(3)
-    return Polygon([(-d * OVERLAP, -half), (-d * OVERLAP, half), (0.0, half),
+    half = PIN_BASE / 2
+    return Polygon([(-d * PIN_SINK, -half), (-d * PIN_SINK, half), (0.0, half),
                     (d * depth, 0.0), (0.0, -half)])
 
 
@@ -845,6 +850,8 @@ labelR = 16.3;
 markR = 8.5;
 hText = 0.6;
 pinDepth = {PIN_R};
+pinBase = {PIN_BASE};
+pinSink = {PIN_SINK};
 
 module createDisc() {{
         union() {{
@@ -914,13 +921,14 @@ module dash(onSecondSide) {{
         }}
 }}
 
-// Note pin: small equilateral triangle on a groove wall, apex into the groove at the beat
+// Note pin: isosceles triangle on a groove wall, base pinBase long and buried pinSink
+// into the wall, apex pinDepth into the groove at the beat
 // dir = 1 -> on the inner wall pointing outward, -1 -> on the outer wall pointing inward
 module pin(wall, angle, dir, onSecondSide) {{
-        half = pinDepth / sqrt(3);
+        half = pinBase / 2;
         onSide(onSecondSide) rotate(a=angle) translate(v=[wall, 0, hStock-hGroove-overlap]) {{
                 linear_extrude(height=hGroove+overlap) {{
-                        polygon(points=[[-dir*overlap, -half], [-dir*overlap, half], [0, half], [dir*pinDepth, 0], [0, -half]]);
+                        polygon(points=[[-dir*pinSink, -half], [-dir*pinSink, half], [0, half], [dir*pinDepth, 0], [0, -half]]);
                 }}
         }}
 }}
@@ -967,6 +975,8 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
         DATE_TIME=datetime.now().strftime("%d %b %Y %H:%M"),
         THICKNESS=thickness,
         PIN_R=pin_radius,
+        PIN_BASE=PIN_BASE,
+        PIN_SINK=PIN_SINK,
         TWO_SIDED="true" if partition_b is not None else "false",
         TITLE_A=_scad_str(title),
         TITLE_B=_scad_str(title_b) if partition_b is not None else "",
@@ -985,6 +995,70 @@ def analyze(midi_bytes: bytes, duration: float = 25.0, start: float = 0.0,
     rec["events"] = [[round(t, 3), n] for t, n in sorted(events)]
     rec["fit"] = compare_fit(events, rec["offset"], rec["partition"], duration, rev_seconds, comb) if events else None
     return _finish_analysis(rec, duration, start)
+
+
+REAL_PITCH_OFFSET = -4   # the toy's comb sounds 4 semitones below Fred's notation (A-flat major)
+RENDER_RATE = 6000       # review audio: 6 kHz mono, like the toy's own tinny voice
+
+
+def plan_song(midi_bytes: bytes, comb: Comb, tracks: Optional[List[int]], skyline: bool,
+              duration: float, rev_seconds: float, roll: str, auto_transpose: bool,
+              manual_offset: int) -> Dict:
+    """Slice the whole song (selected tracks) into consecutive 86-beat sides
+    with one transposition and one tempo. duration <= 0 auto-fits the tempo."""
+    allev = parse_midi_events(midi_bytes, 36000.0, 0.0, tracks, skyline)
+    if not allev:
+        raise ValueError("No playable notes in the selected tracks")
+    first, last = allev[0][0], allev[-1][0]
+    start, fit = max(0.0, first - 0.2), None
+    if duration <= 0:
+        rec = auto_fit(midi_bytes, start, rev_seconds, comb, roll, auto_transpose, manual_offset,
+                       12000, 0.35, 0.5, tracks, skyline)
+        fit, duration, start = rec["fit"], rec["fit"]["duration"], rec["fit"]["start"]
+    offset = choose_transposition([n for _, n in allev], comb) if auto_transpose else manual_offset
+    n_sides = max(1, math.ceil((last - start + 0.01) / duration))
+    sides = [analyze(midi_bytes, duration, start + k * duration, False, offset, comb, roll, rev_seconds, tracks, skyline)
+             for k in range(n_sides)]
+    return {"sides": sides, "duration": duration, "start": start, "offset": offset, "fit": fit,
+            "note_count": sum(s["note_count"] for s in sides)}
+
+
+def render_song(sides: List[Dict], rev_seconds: float, comb: Comb = DEFAULT_COMB,
+                rate: int = RENDER_RATE, side_gap: float = 0.6) -> bytes:
+    """Mono 16-bit WAV of the whole song as the toy will play it: every pin is
+    a plucked tine (decaying partials below Nyquist) at toy pitch and toy speed."""
+    import struct
+    beat_sec = rev_seconds / MAX_BEAT
+    onsets = []
+    cursor = 0.0
+    for part in sides:
+        p = part["partition"]
+        for tone, row in enumerate(p):
+            for b, on in enumerate(row):
+                if on:
+                    onsets.append((cursor + b * beat_sec, comb.notes[tone] + REAL_PITCH_OFFSET))
+        cursor += rev_seconds + side_gap
+    total = int((cursor + 1.5) * rate)
+    audio = np.zeros(total, dtype=np.float32)
+    dur = 1.2
+    n = int(dur * rate)
+    t = np.arange(n) / rate
+    env = np.exp(-t * 4.5) * (1 - np.exp(-t * 400))
+    for when, midi in onsets:
+        f0 = 440.0 * 2 ** ((midi - 69) / 12)
+        tone = np.zeros(n, dtype=np.float32)
+        for k, amp, decay in ((1, 1.0, 1.0), (2.76, 0.35, 2.2), (5.4, 0.12, 3.5)):
+            if f0 * k < rate / 2:
+                tone += amp * np.sin(2 * np.pi * f0 * k * t) * np.exp(-t * decay * 2)
+        i0 = int(when * rate)
+        seg = min(n, total - i0)
+        if seg > 0:
+            audio[i0:i0 + seg] += (tone * env)[:seg]
+    peak = float(np.abs(audio).max()) or 1.0
+    pcm = (audio / peak * 0.85 * 32767).astype("<i2").tobytes()
+    header = struct.pack("<4sI4s4sIHHIIHH4sI", b"RIFF", 36 + len(pcm), b"WAVE", b"fmt ", 16, 1, 1,
+                         rate, rate * 2, 2, 16, b"data", len(pcm))
+    return header + pcm
 
 
 def _finish_analysis(rec: Dict, duration: float, start: float) -> Dict:

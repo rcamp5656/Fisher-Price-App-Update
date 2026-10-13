@@ -159,7 +159,7 @@ def test_press_default_pin_radius_is_0_8():
     # SCAD contains pinDepth = 0.8 and sqrt(3)
     scad = requests.get(f"{API}/conversions/{rec['id']}/scad", timeout=20).text
     assert "pinDepth = 0.8" in scad
-    assert "sqrt(3)" in scad
+    assert "pinBase = 1.6" in scad and "pinSink = 0.5" in scad
 
 
 def test_press_pin_radius_0_3_rejected():

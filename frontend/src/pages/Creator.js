@@ -15,6 +15,7 @@ import PrintGuide from "../components/PrintGuide";
 import RecordShelf from "../components/RecordShelf";
 import TrackPicker from "../components/TrackPicker";
 import AlbumPanel from "../components/AlbumPanel";
+import SongReview from "../components/SongReview";
 import { CARD, BTN_BASE, BTN_DISABLED, TOY_REV_SECONDS, applyComb, emptyPartition } from "../lib/fp";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -35,6 +36,9 @@ export default function Creator() {
   const [tracks, setTracks] = useState({ a: null, b: null });
   const [skyline, setSkyline] = useState(false);
   const [starts, setStarts] = useState({ a: 0, b: 0 });
+  const startsRef = useRef(starts);
+  startsRef.current = starts;
+  const filesRef = useRef(null);
   const [s, setS] = useState(DEFAULTS);
   const [revSeconds, setRevSeconds] = useState(TOY_REV_SECONDS);
   const [analysis, setAnalysis] = useState(null);
@@ -116,8 +120,9 @@ export default function Creator() {
       if (pick) { const t = melodic.find((x) => x.index === data.suggested); if (t && key === "a") setStarts((p) => ({ ...p, a: Math.max(0, Math.floor(t.first)) })); }
     } catch (e) { setScans((p) => ({ ...p, [key]: null })); }
   };
-  const onFileA = (f) => { setFiles((p) => ({ ...p, a: f })); setStarts((p) => ({ ...p, a: 0 })); setS((p) => ({ ...p, title: stem(f.name) })); scanFile("a", f); };
-  const onFileB = (f) => { setFiles((p) => ({ ...p, b: f })); setStarts((p) => ({ ...p, b: 0 })); setS((p) => ({ ...p, titleB: stem(f.name) })); scanFile("b", f); };
+  const dropAnalysis = () => { setAnalysis(null); setParts({ a: null, b: null }); setResult(null); setStale(false); setTab("notes"); };
+  const onFileA = (f) => { dropAnalysis(); setFiles((p) => ({ ...p, a: f })); setScans((p) => ({ ...p, a: null })); setTracks((p) => ({ ...p, a: null })); setStarts((p) => ({ ...p, a: 0 })); setS((p) => ({ ...p, title: stem(f.name) })); scanFile("a", f); };
+  const onFileB = (f) => { dropAnalysis(); setFiles((p) => ({ ...p, b: f })); setScans((p) => ({ ...p, b: null })); setTracks((p) => ({ ...p, b: null })); setStarts((p) => ({ ...p, b: 0 })); setS((p) => ({ ...p, titleB: stem(f.name) })); scanFile("b", f); };
   useEffect(() => {
     if (s.twoSided && s.sideMode === "continue" && s.title) set({ titleB: `${s.title} (part 2)`.slice(0, 40) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,7 +155,7 @@ export default function Creator() {
   }, [starts.a, starts.b]);
 
   const needsB = s.twoSided && s.sideMode === "file";
-  const canAnalyze = files.a && (!needsB || files.b) && !busy;
+  const canAnalyze = files.a && scans.a && (!needsB || (files.b && scans.b)) && !busy;
 
   const applyAnalysis = (a, b) => {
     setAnalysis({ a, b });
@@ -159,11 +164,16 @@ export default function Creator() {
     setActive("a"); setStale(false); setResult(null); setTab("notes");
   };
 
+  filesRef.current = files.a;
   const onAnalyze = async () => {
     if (!canAnalyze) return;
     setBusy("analyze"); setError(null); setNotice(null);
     try {
+      const reqFile = files.a;
+      const reqStart = starts.a;
       const a = await analyzeSide(files.a, starts.a, s.duration, s.autoFit);
+      // the user moved the window or swapped the file while we were reading — this result is obsolete
+      if (filesRef.current !== reqFile || startsRef.current.a !== reqStart) return;
       const dur = s.autoFit ? a.fit.duration : s.duration;
       const startA = s.autoFit ? a.fit.start : starts.a;
       let b = null;
@@ -393,6 +403,9 @@ export default function Creator() {
 
           {result && <DownloadPanel api={API} result={result} />}
 
+          {files.a && scans.a && (
+            <SongReview api={API} file={files.a} settings={s} tracks={tracks.a} skyline={skyline} revSeconds={revSeconds} disabled={!!busy} />
+          )}
           {files.a && scans.a && (
             <AlbumPanel
               api={API} file={files.a} settings={s} tracks={tracks.a} skyline={skyline} revSeconds={revSeconds}

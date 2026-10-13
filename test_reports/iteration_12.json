@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 12 (TRACK PICKER + ALBUM) tested end-to-end. Backend: 87/87 pytest green (76 regression + 11 new iter12). /api/scan on baby1.mid returns 13 tracks, suggested=5 (Tenor Sax), tracks 12 & 13 drums (instrument=='Drums'), events are triples with no drum tracks, total≈176.4. /api/scan on sample_twinkle returns 3-elem events, total≈12. /api/analyze baby1 duration=25 start=18.7 tracks='5' => 32 notes (within 25-45), dropped=0, max 1 pin/beat; tracks='' => notes>>; tracks='4' skyline=true <= skyline=false. /api/autofit baby1 start=18.5 tracks='5' => fit.score 99 (>=95), fit.tries 11,803 (>1000), events non-empty. /api/press JSON with tracks=[5]/skyline=false => resp.tracks=[5], GET /conversions/{id} echoes tracks=[5] & skyline=false. ALBUM: GET /album/does-not-exist => 404; POST /album with non-MIDI => 400. POST /album sample_twinkle title='TEST_Iter12_TwinkleAlbum' two_sided=false thickness=3 duration=0 => running then done (single disc, mesh_ok=true); each disc id resolvable with album_id & album_count; GET /album/{id}/zip => 200 ZIP containing N stls + README.txt with 'Play order'. Baby two-sided album starts and progresses (total_discs>0 or done>0 within 90s). Frontend: upload baby1.mid => track-picker appears with 13 rows, track-check-5 pre-checked, 12/13 disabled (drums), header '1/11 used', window-start input ≈18. track-play-5 toggles playing/stop (bg-[#1D3557] applied), auto-melody restores '1/11 used'. analyze-button => stat-notes=32 (in 25-45), autofit-result '99% match', window-ruler-caption 'window 18.4s → 42.1s', convert-button enabled, 0 console errors. skyline-check toggles stale-badge on. album-button visible+enabled; click => album-status appears with album-progress-text 'measuring the song…' then album-disc-1 appears within ~3s with album-stl-1 href /api/conversions/{id}/stl. Twinkle (single-track) upload => NO track-picker and analyze still works. Zero console errors across all flows.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/autofit", "issue": "Carried over from iter11 — fit.tries can exceed max_tries (coarse+full() loop ignores budget). Not visible with default 12,000 budget."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter12_tracks_album.py",
+    "/app/test_reports/pytest/iter12_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "fisher_price.py is now 1180 lines — still past the 700-line split threshold. Consider splitting geometry (mesh/STL/SCAD), MIDI parsing (scan_tracks/parse_midi_events), and fit (auto_fit/compare_fit) into separate modules.",
+    "server.py is 770 lines and growing (album, albums endpoints, press, scan, autofit). Album routes and models could live in a routers/album.py.",
+    "server.py still uses deprecated @app.on_event('shutdown') — migrate to FastAPI lifespan.",
+    "AlbumPanel.polling runs every 3s via setInterval but when the album is `done` the effect still schedules a timer on each re-render if any dependency changes — currently guarded by `album.status === 'running'`, OK but worth noting a cleanup race if the component unmounts mid-request.",
+    "_build_album constructs a fresh FormData for every polled request on the client; backend-side the heavy work (parse_midi_events, auto_fit, N × analyze, N × press) runs sequentially on run_in_threadpool — fine for 1-4 discs but will serialize longer albums. Could Parallelize press calls."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter12_tracks_album.py"],
+  "success_rate": {"backend": "100% (87/87 pytest)", "frontend": "100% of iter12 assertions, 0 console errors"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "TEST_Iter12_PressTracks, TEST_Iter12_TwinkleAlbum (1 disc), TEST_Iter12_BabyAlbum (two-sided, build not awaited to completion). No numbering changes.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter12 adds: POST /api/scan returns {events(triples excl drums), total, tracks:[...], suggested}. /api/analyze and /api/autofit accept form fields tracks (comma list, '' = all pitched) and skyline (bool). /api/press JSON accepts tracks (list) and skyline. POST /api/album (multipart) starts a background _build_album asyncio task; poll GET /api/album/{id} (status running|done|error); GET /api/album/{id}/zip returns ZIP. Frontend: TrackPicker only renders when scan.tracks.length >= 2 (single-track MIDIs skip it). After upload scanFile pre-selects scan.suggested alone and jumps window start to that track's first note. AlbumPanel polls every 3s. For file upload use set_input_files on hidden [data-testid='midi-upload-zone-input']. 2-sided baby1.mid album takes 3-4 min to fully complete; tests only verify progression. pytest.ini runs with xdist -n 2 --dist loadscope; do NOT pass -p no:xdist (collides).",
+  "rca of the issue": "No new issues — the carry-over autofit max_tries budget mismatch from iter11 remains but is cosmetic for production use."
+}

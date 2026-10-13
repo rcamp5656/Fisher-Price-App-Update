@@ -14,7 +14,7 @@ function Disc({ url }) {
 
   return (
     <mesh geometry={prepared} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow>
-      <meshStandardMaterial color="#B9A9E3" roughness={0.55} metalness={0.05} />
+      <meshStandardMaterial color="#B9A9E3" roughness={0.55} metalness={0.05} flatShading />
     </mesh>
   );
 }
@@ -33,7 +33,7 @@ export default function RecordViewer({ url }) {
     <Canvas
       key={url}
       shadows
-      camera={{ position: [0, 95, 95], fov: 42 }}
+      camera={{ position: [0, 95, 95], fov: 42, near: 0.5, far: 1000 }}
       dpr={[1, 2]}
       data-testid="record-3d-canvas"
     >
@@ -45,7 +45,7 @@ export default function RecordViewer({ url }) {
         <Disc url={url} />
       </Suspense>
       <ContactShadows position={[0, -2.2, 0]} opacity={0.35} scale={200} blur={2.2} far={40} />
-      <OrbitControls enablePan={false} minDistance={70} maxDistance={240} autoRotate autoRotateSpeed={0.8} />
+      <OrbitControls enablePan minDistance={12} maxDistance={240} autoRotate autoRotateSpeed={0.8} />
     </Canvas>
   );
 }

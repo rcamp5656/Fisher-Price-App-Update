@@ -110,6 +110,7 @@ requests-oauthlib==2.0.0
 rich==15.0.0
 rpds-py==2026.9.1
 rsa==4.9.1
+rtree==1.4.1
 s3transfer==0.19.2
 s5cmd==0.2.0
 scipy==1.17.1

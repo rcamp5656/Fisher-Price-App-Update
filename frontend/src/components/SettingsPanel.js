@@ -210,7 +210,7 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
         <p className={`font-mono text-[10px] mt-1 ${s.pinRadius < 0.6 ? "text-[#E63946] font-bold" : "text-[#457B9D]"}`} data-testid="pin-radius-hint">
           {s.pinRadius < 0.6
             ? "Shallow pin — the tine may not be pushed far enough to ring. Originals ≈ 0.8 mm."
-            : `Small equilateral triangle on the groove wall (${(s.pinRadius / 0.866).toFixed(2)} mm sides), apex pushing the tine sideways by this much. Originals ≈ 0.8 mm.`}
+            : `Triangle ramp on the groove wall: 1.6 mm base buried 0.5 mm into the wall, apex pushing the tine sideways by this much. Originals ≈ 0.8 mm.`}
         </p>
       </div>
     </div>

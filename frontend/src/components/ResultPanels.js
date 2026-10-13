@@ -21,20 +21,25 @@ export function DownloadPanel({ api, result }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="font-mono text-xs text-[#457B9D]">4 · DOWNLOAD & SHARE</p>
-      <a data-testid="download-stl-button" href={`${base}/stl`} className={`${BTN_BASE} text-lg py-4 bg-[#2A9D8F] text-white`}>
-        <Download className="h-5 w-5" /> {result.two_sided ? ".STL (FULL DISC)" : ".STL (3D PRINT)"}
-      </a>
+      {!result.two_sided && (
+        <a data-testid="download-stl-button" href={`${base}/stl`} className={`${BTN_BASE} text-lg py-4 bg-[#2A9D8F] text-white`}>
+          <Download className="h-5 w-5" /> .STL (3D PRINT)
+        </a>
+      )}
       {result.two_sided && (
-        <div className="border-2 border-[#1D3557] rounded-xl p-3 bg-[#FFB703]/40 flex flex-col gap-2">
-          <p className="font-mono text-[10px] text-[#1D3557] font-bold">RECOMMENDED: print both halves pins-up (no supports), glue flat backs together — spindle + drive holes align them.</p>
+        <div className="border-2 border-[#1D3557] rounded-xl p-3 bg-[#2A9D8F]/15 flex flex-col gap-2">
+          <p className="font-mono text-[10px] text-[#1D3557] font-bold">TWO-SIDED = TWO FLAT HALVES. Print each half pins-up with NO supports, then glue the flat backs together — the spindle hole + 4 drive holes line them up.</p>
           <div className="grid grid-cols-2 gap-2">
-            <a data-testid="download-half-a-button" href={`${base}/stl?part=half-a`} className={SMALL}>
-              <Download className="h-4 w-4" /> HALF A .STL
+            <a data-testid="download-half-a-button" href={`${base}/stl?part=half-a`} className={`${BTN_BASE} text-base py-3 bg-[#2A9D8F] text-white`}>
+              <Download className="h-5 w-5" /> HALF A .STL
             </a>
-            <a data-testid="download-half-b-button" href={`${base}/stl?part=half-b`} className={SMALL}>
-              <Download className="h-4 w-4" /> HALF B .STL
+            <a data-testid="download-half-b-button" href={`${base}/stl?part=half-b`} className={`${BTN_BASE} text-base py-3 bg-[#2A9D8F] text-white`}>
+              <Download className="h-5 w-5" /> HALF B .STL
             </a>
           </div>
+          <a data-testid="download-stl-button" href={`${base}/stl`} className="font-mono text-[10px] text-[#457B9D] underline text-center" title="One solid disc with pins on both faces — the underside grooves and pins need supports">
+            full one-piece disc .stl (needs supports — not recommended)
+          </a>
         </div>
       )}
       <div className={`grid gap-3 ${result.two_sided ? "grid-cols-3" : "grid-cols-2"}`}>

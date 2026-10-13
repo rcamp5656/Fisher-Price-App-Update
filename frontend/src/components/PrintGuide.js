@@ -34,7 +34,8 @@ const SECTIONS = [
       "3–4 perimeters, 40 %+ infill (or 100 % — the disc is thin anyway).",
       "Turn off elephant's-foot compensation if the disc won't drop onto the spindle, or ream the 6.4 mm hole lightly.",
       "Two-sided: 5 mm total (two 2.5 mm halves). Never use supports — nothing on the disc needs them.",
-      "Pins are ~0.9 mm equilateral triangles — enable Arachne/variable line width so the apex isn't dropped; a 0.25 mm nozzle or resin gives the sharpest tips.",
+      "Pins are 1.6 mm-base triangle ramps fused 0.5 mm into the groove wall — enable Arachne/variable line width so the apex isn't dropped; a 0.25 mm nozzle or resin gives the sharpest tips.",
+      "Two-sided discs: print HALF A and HALF B flat, pins up — never the full disc, it would need supports inside the grooves. Glue the flat backs together, aligned on the spindle hole + 4 drive holes.",
     ],
   },
   {

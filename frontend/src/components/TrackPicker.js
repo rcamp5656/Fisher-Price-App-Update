@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Play, Square, Sparkles, Layers3, Drum } from "lucide-react";
+import { Play, Square, Sparkles, Layers3, Drum, AudioLines } from "lucide-react";
 import { midiToFreq } from "../lib/fp";
 import { pluck, newCtx } from "../hooks/useMusicBox";
 
@@ -19,6 +19,7 @@ function Strip({ track, total, selected }) {
 }
 
 export default function TrackPicker({ scan, tracks, onTracks, skyline, onSkyline }) {
+  const label = (t) => (t.name && t.name.trim() ? `${t.name.trim()} · ${t.instrument}` : t.instrument);
   const ctxRef = useRef(null);
   const [playingIdx, setPlayingIdx] = useState(null);
   const stop = () => { if (ctxRef.current) ctxRef.current.close(); ctxRef.current = null; setPlayingIdx(null); };
@@ -50,12 +51,22 @@ export default function TrackPicker({ scan, tracks, onTracks, skyline, onSkyline
     <div data-testid="track-picker" className="border-2 border-[#1D3557] rounded-lg bg-[#F4F1EA] p-3 flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <span className="font-sans font-black text-sm flex items-center gap-1"><Layers3 className="h-4 w-4" /> TRACKS · {sel.size}/{all.length} used</span>
-        <button
-          type="button" data-testid="track-auto-melody" onClick={() => onTracks(scan.suggested != null ? [scan.suggested] : all)}
-          className="font-mono text-[10px] font-bold px-2 py-1 rounded border-2 border-[#1D3557] bg-[#E9C46A] hover:bg-[#2A9D8F] hover:text-white flex items-center gap-1"
-        >
-          <Sparkles className="h-3 w-3" /> melody only
-        </button>
+        <div className="flex gap-1">
+          <button
+            type="button" data-testid="track-auto-melody" onClick={() => { onTracks(scan.suggested != null ? [scan.suggested] : all); onSkyline(false); }}
+            className="font-mono text-[10px] font-bold px-2 py-1 rounded border-2 border-[#1D3557] bg-[#E9C46A] hover:bg-[#2A9D8F] hover:text-white flex items-center gap-1"
+            title="Use only the most melody-like track"
+          >
+            <Sparkles className="h-3 w-3" /> melody only
+          </button>
+          <button
+            type="button" data-testid="track-mono-mix" onClick={() => { onTracks(all); onSkyline(true); }}
+            className="font-mono text-[10px] font-bold px-2 py-1 rounded border-2 border-[#1D3557] bg-white hover:bg-[#2A9D8F] hover:text-white flex items-center gap-1"
+            title="Mix every pitched track down to one mono line (top note at each moment) — like listening to the song and writing down the tune"
+          >
+            <AudioLines className="h-3 w-3" /> mono mix
+          </button>
+        </div>
       </div>
       <p className="font-mono text-[10px] text-[#457B9D]">
         A full band arrangement can't fit 16 tines — pick the line that carries the tune. ★ = most melody-like. Drums have no tine on the toy and are skipped.
@@ -73,7 +84,7 @@ export default function TrackPicker({ scan, tracks, onTracks, skyline, onSkyline
                 <span className="font-bold text-[#1D3557] truncate flex items-center gap-1">
                   {t.drums && <Drum className="h-3 w-3" />}
                   {t.index === scan.suggested && <span title="most melody-like" className="text-[#E63946]">★</span>}
-                  {t.instrument}{t.name ? ` · ${t.name}` : ""}
+                  {label(t)}
                 </span>
                 <span className="ml-auto text-[#457B9D] whitespace-nowrap">{t.notes} notes · {nn(t.low)}–{nn(t.high)}</span>
                 {!t.drums && (

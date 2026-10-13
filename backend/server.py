@@ -409,28 +409,15 @@ async def _build_album(album_id: str, raw: bytes, o: dict):
     try:
         comb = await _comb()
         tracks, skyline = o["tracks"], o["skyline"]
-        allev = await run_in_threadpool(fp.parse_midi_events, raw, 36000.0, 0.0, tracks, skyline)
-        if not allev:
-            raise ValueError("No playable notes in the selected tracks")
-        first, last = allev[0][0], allev[-1][0]
-        start, duration = max(0.0, first - 0.2), o["duration"]
-        fit = None
-        if duration <= 0:
-            rec = await run_in_threadpool(fp.auto_fit, raw, start, o["rev_seconds"], comb, o["roll"],
-                                          o["auto_transpose"], o["manual_offset"], 12000, 0.35, 0.5, tracks, skyline)
-            fit, duration, start = rec["fit"], rec["fit"]["duration"], rec["fit"]["start"]
-        offset = (fp.choose_transposition([n for _, n in allev], comb) if o["auto_transpose"] else o["manual_offset"])
-        n_sides = max(1, math.ceil((last - start + 0.01) / duration))
+        plan = await run_in_threadpool(fp.plan_song, raw, comb, tracks, skyline, o["duration"],
+                                       o["rev_seconds"], o["roll"], o["auto_transpose"], o["manual_offset"])
+        sides, duration, start, offset, fit = plan["sides"], plan["duration"], plan["start"], plan["offset"], plan["fit"]
+        n_sides = len(sides)
         per_disc = 2 if o["two_sided"] else 1
         n_discs = math.ceil(n_sides / per_disc)
         await db.albums.update_one({"id": album_id}, {"$set": {
             "duration": duration, "start": start, "offset": offset, "fit": fit,
             "total_sides": n_sides, "total_discs": n_discs}})
-        sides = []
-        for k in range(n_sides):
-            rec = await run_in_threadpool(fp.analyze, raw, duration, start + k * duration, False, offset,
-                                          comb, o["roll"], o["rev_seconds"], tracks, skyline)
-            sides.append(rec)
         base = o["title"][:30]
         for d in range(n_discs):
             a = sides[d * per_disc]
@@ -460,6 +447,50 @@ async def _build_album(album_id: str, raw: bytes, o: dict):
     except Exception as e:
         logging.exception("album failed")
         await db.albums.update_one({"id": album_id}, {"$set": {"status": "error", "error": str(e)}})
+
+
+def _song_opts(tracks, skyline, duration, rev_seconds, roll, auto_transpose, manual_offset) -> dict:
+    return {
+        "tracks": _tracks(tracks), "skyline": bool(skyline),
+        "duration": duration if duration <= 0 else max(5.0, min(60.0, duration)),
+        "rev_seconds": max(5.0, min(60.0, rev_seconds)), "roll": "after" if roll == "after" else "before",
+        "auto_transpose": bool(auto_transpose), "manual_offset": manual_offset,
+    }
+
+
+@api_router.post("/render")
+async def render_song(
+    file: UploadFile = File(...),
+    tracks: str = Form(""),
+    skyline: bool = Form(False),
+    duration: float = Form(0.0),
+    rev_seconds: float = Form(25.0),
+    roll: str = Form("before"),
+    auto_transpose: bool = Form(True),
+    manual_offset: int = Form(0),
+):
+    """Whole song as the toy will play it: 6 kHz mono WAV of Fisher-Price notes, for review."""
+    raw = await _read_midi(file)
+    comb = await _comb()
+    o = _song_opts(tracks, skyline, duration, rev_seconds, roll, auto_transpose, manual_offset)
+    try:
+        plan = await run_in_threadpool(fp.plan_song, raw, comb, o["tracks"], o["skyline"], o["duration"],
+                                       o["rev_seconds"], o["roll"], o["auto_transpose"], o["manual_offset"])
+        wav = await run_in_threadpool(fp.render_song, plan["sides"], o["rev_seconds"], comb)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logging.exception("render failed")
+        raise HTTPException(status_code=422, detail=f"Could not render: {e}")
+    name = re.sub(r"[^A-Za-z0-9_-]+", "_", Path(file.filename or "song").stem).strip("_") or "song"
+    return Response(wav, media_type="audio/wav", headers={
+        "Content-Disposition": f'attachment; filename="{name}-fisher-price-6kHz-mono.wav"',
+        "X-Sides": str(len(plan["sides"])), "X-Notes": str(plan["note_count"]),
+        "X-Duration": f"{plan['duration']:.2f}", "X-Start": f"{plan['start']:.2f}", "X-Offset": str(plan["offset"]),
+        "X-Fit-Score": f"{plan['fit']['score']:.1f}" if plan.get("fit") else "",
+        "X-Sample-Rate": str(fp.RENDER_RATE),
+        "Access-Control-Expose-Headers": "X-Sides, X-Notes, X-Duration, X-Start, X-Offset, X-Fit-Score, X-Sample-Rate, Content-Disposition",
+    })
 
 
 @api_router.post("/album", response_model=Album)
