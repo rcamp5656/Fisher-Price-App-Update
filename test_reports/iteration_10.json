@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 10 verified end-to-end. Backend: 67/67 tests pass (63 regression + 4 new iter10). /api/analyze with chord-at-zero → dropped=0, staggered>=2, no column double; /api/analyze with dense MIDI-72 (single tine, auto_transpose=false) → dropped=0, staggered>0, no consecutive single-tine beats; /api/press for chord-on-10 + tone4@30/31 + twin7@40/41 → 200, toy_fixes==3, twin pair untouched, mesh_check {ok:true, watertight:true, winding_consistent:true, open_edges_after:0, faces>0, volume_mm3>0}; two-sided press returns mesh_check.halves_ok==true and GET /api/conversions/{id} echoes it. Frontend: factory-tune Twinkle flow → fit-toggle default text 'ALL 86 BEATS', window-ruler-caption shows 'window 0.0s → 25.0s of song · 86 beats = 1 revolution' (plus '0.29 s / beat'), note-editor fits (sw<=cw) at 1920×1080 (1248/1248); at 1366×768 scrollWidth=924 clientWidth=923 (1 px over — effectively fits, likely sub-pixel rounding). Toggle to 'FIT TO NOTES' → caption changes to 'beats 0–80'. Chord added → stat-chords=2 (counts both notes in the chord), chord-warning renders; auto-stagger-button → stat-chords=0 and total note cells unchanged (43→43). Single-tine adjacent add → stat-repeats=2, repeat-warning renders; make-playable-button → stat-repeats=0 and total unchanged (44→44). PLAY PREVIEW → playhead element appears. Pressed-record page (?open=<id>) and /r/<id> both render MESH CHECK — PRINT READY panel with mesh-watertight '✓ watertight', mesh-winding '✓ consistent triangle winding', mesh-open-edges '✓ 0 open edge(s)', mesh-fixes copy.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "NoteEditor @ 1366×768", "issues": ["note-editor scrollWidth=924 vs clientWidth=923 — 1-pixel overflow (likely sub-pixel rounding of 86 beat columns). Not visible on screen but strictly speaking sw>cw at this breakpoint. Consider rounding cell width down or shaving 1 px from gutter to guarantee fit."]},
+      {"screen": "NoteEditor stats", "issues": ["Request text said 'stat-chords becomes 1 after adding one adjacent note', but the implementation counts every note that participates in a chord (so 2 for a 2-note chord). Chord-warning + MAKE PLAYABLE still work exactly as specified — this is a wording vs. counting-semantics mismatch, not a defect."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter10_mesh_check.py",
+    "/app/test_reports/pytest/iter10_regression.xml"
+  ],
+  "action_items": [
+    "Optional: shave 1 px off NoteEditor column width (or parent padding) so scrollWidth<=clientWidth at 1366×768. Currently off by one pixel; no visible overflow but violates the strict 'sw<=cw' assertion.",
+    "Optional: clarify docs — stat-chords counts notes-in-chord (not chord events). Could rename label or divide by 2, if the single-event semantics was intended."
+  ],
+  "critical_code_review_comments": [
+    "fisher_price.py is ~930 lines — approaching the 1k split threshold. Separating geometry/mesh (build_mesh, heal_mesh, SCAD, STL) from analysis (events_to_record, make_playable, stagger_partition) would help maintenance.",
+    "server.py still uses deprecated FastAPI @app.on_event('shutdown'); migrate to lifespan.",
+    "fisher_price.press mutates the input partition in place via stagger_partition/make_playable before storing. Fine because the echoed partition is the fixed one, but worth noting as an API side-effect for callers."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter10_mesh_check.py"
+  ],
+  "success_rate": {"backend": "100% (67/67)", "frontend": "100% of iter10 assertions"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "TEST_Iter10_MeshOK, TEST_Iter10_HalvesA/B. Numbering restored to 6 by autouse fixture.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter10 adds whole-disc one-pin-per-beat rule in fisher_price._can_place; make_playable now returns (slid, dropped); press toy_fixes = stagger_moved + slid + dropped. mesh_check is attached by heal_mesh and stored in doc; ConversionSummary.mesh_check exposes it; UI MeshCheck component renders when conv.mesh_check is set, on both Creator (?open=<id>) and /r/<id>. Factory-tune picker is LibraryPicker: toggle data-testid='library-toggle', items 'library-<slug>'. For editor cells: use [data-tone][data-beat] (every cell), filled cells also carry data-testid note-{t}-{b} or clash-{t}-{b} — filter with /^note-\\d+-\\d+$/ to avoid matching 'note-editor'. Single-tine rows are tones 0–6 and 13–15. make-playable-button and auto-stagger-button are distinct testids in EditorWorkspace. Press mesh-check for small partitions is <1s; for a full-song press it's 20–60s (use >=180s timeouts).",
+  "rca of the issue": "No bugs found this iteration. 1366×768 editor overshoots clientWidth by exactly 1 px (924 vs 923). Likely cause: cell width is computed as floor(parentWidth / 86) and then 86 cells aggregate a cumulative sub-pixel rounding error, or the ruler/row-label gutter uses an extra 1-px border. Mitigation: use Math.floor on the per-cell CSS width and tighten the outer container by 2 px, or set the editor to width:100% and let cells be fractional CSS pixels."
+}

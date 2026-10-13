@@ -108,6 +108,25 @@ on an original Fisher-Price music box record player.
 - **Print Pack**: `GET /api/conversions/{id}/pack` zip → STL, SCAD, FPR (A + B), 100×60 mm label-card SVG, README.
 - Tested: iteration_5.json (backend 40/40, all UI flows pass).
 
+### 2026-10-13 (session 3 — this fork)
+- **Stagger rule (user ruling)**: one note at a time on the whole disc — no two pins share a beat
+  anywhere; pins of one pitch ≥2 mm apart along the track and single tines get a rest beat
+  (disc wraps). Chords are *rolled* like the factory records (top note keeps the beat, lower
+  notes slide, preferring earlier); repeats slide later. Notes slide as far as needed to the
+  nearest free beat — **nothing is dropped** unless the disc is full. `make_playable` returns
+  (slid, dropped); `staggered` = rolled + slid; `toy_fixes` counts all fixes. Mirrored in
+  `fp.js` (canPlace/slide/staggerPartition/thinRepeats). iter8 test updated (dropped==0).
+- **Editor layout**: all 86 beats shown by default (fit toggle kept, default off); measured
+  cell sizing (ResizeObserver, no horizontal scroll), ruler with beat numbers + song seconds
+  every 10 beats, bar lines every 5/10, caption "window X → Y s of song". Page widened to
+  1800 px (workspace 9/12, sidebar 3/12).
+- **Mesh pre-flight (`heal_mesh`)**: before STL export: merge vertices, drop duplicate +
+  degenerate triangles, fix mismatched windings, fill holes, verify watertight/winding/open
+  edges, volume, bodies. Report stored as `mesh_check` on the record; SpecSheet shows
+  "MESH CHECK — PRINT READY / NEEDS ATTENTION" with the repairs performed. Halves checked too
+  (`halves_ok`). Added scipy + networkx (trimesh graph engines).
+- Tested: iteration_10.json (backend 67/67, all UI flows pass).
+
 ## Backlog / Remaining
 - P1: User validation of physical prints (pin height/width on the real toy).
 - P1: User to verify twin tines 8/9 sound the same pitch on their player (confirms comb mapping).

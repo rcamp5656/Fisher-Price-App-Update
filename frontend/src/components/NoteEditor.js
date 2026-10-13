@@ -55,7 +55,7 @@ export default function NoteEditor({ partition, onChange, duration, start = 0, p
   const to = fit && usedBeats.length ? Math.min(MAX_BEAT - 1, Math.max(...usedBeats) + 1) : MAX_BEAT - 1;
   const beats = Array.from({ length: to - from + 1 }, (_, i) => from + i);
 
-  const cellW = Math.max(MIN_CELL, Math.floor((width - LABEL_W - GAP * beats.length) / beats.length));
+  const cellW = Math.max(MIN_CELL, Math.floor((width - LABEL_W - GAP * beats.length - 1) / beats.length));
   const rowH = Math.max(20, Math.min(30, Math.round(cellW * 2.2)));
   const secPerBeat = duration / MAX_BEAT;
   const songTime = (b) => (start + b * secPerBeat).toFixed(1);
