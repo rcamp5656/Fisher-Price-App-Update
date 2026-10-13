@@ -176,10 +176,17 @@ def scan_tracks(midi_bytes: bytes) -> Dict:
         if not drums:
             variety = len(set(notes)) / max(1, min(len(notes), 40))
             score += 25 * max(0.0, 1 - (poly - 1) * 2)
-            score += 30 * math.exp(-((mean - 72) / 11) ** 2)
-            score += 20 * (1 - min(1.0, abs(math.log2(max(density, 0.05) / 2.0)) / 2.5))
+            score += 15 * math.exp(-((mean - 72) / 16) ** 2)
+            score += 25 * (1 - min(1.0, abs(math.log2(max(density, 0.05) / 2.0)) / 2.0))
             score += 10 * min(1.0, variety * 4)
             score += 15 * min(1.0, span / max(total, 1.0))
+            score += 10 * min(1.0, len(ev) / max(total, 1.0))
+            label = f"{tr.name} {GM_NAMES[progs[0]] if progs and 0 <= progs[0] < 128 else ''}".lower()
+            is_bass = "bass" in label or (progs and 32 <= progs[0] <= 39) or mean < 55
+            if is_bass:
+                score *= 0.4  # a bass line is never the tune
+            if any(k in label for k in ("melody", "lead", "vocal", "voice", "sing", "solo", "tune", "main")):
+                score += 20
         step = max(1, len(ev) // 300)
         tracks.append({
             "index": ti,

@@ -1,0 +1,32 @@
+{
+  "summary": "Iter13 (BUG swap-midi, RENDER, pin ramps, two-sided download panel, mono-mix/auto-melody, bass-penalty melody scoring) tested end-to-end. Backend: 94/94 pytest green (87 regression + 7 new iter13). POST /api/render — baby1 tracks='7' → 200, audio/wav, X-Sample-Rate=6000, X-Sides=9/X-Notes=352, WAV framerate 6000, mono, 16-bit, duration within 2 s of sides*(25+0.6)+1.5; sample_twinkle (no tracks) → 200 1 side; non-MIDI → 400; drums-only tracks='12' → 422. SCAD contains 'pinBase = 1.6' and 'pinSink = 0.5', no 'sqrt(3)'; mesh_check.ok=true; 3-pin partition pin_count matches partition. /api/scan whoscheating.mid suggested=3 (NOT bass 2); baby1 suggested=7 (new bass-penalty — updated iter12 assertion to accept {5,7}). FRONTEND: upload baby1 → track-picker renders with track names first ('Tenor Sax', '★Choir Aahs'), analyze → stat-notes=4, caption '34.6s → 52.6s'. Swap to whoscheating.mid: note-editor and stat-notes vanish immediately, track-picker header '1/13 used', window-start-input=11 (≈12, NOT 0 NOT 19), analyze → stat-notes=6 (DIFFERENT partition from baby, note-{tone}-{beat} set changed), caption '11.3s → 36.5s'. track-mono-mix → skyline checked + '13/13 used'; track-auto-melody → skyline unchecked + '1/13 used'. render-song-button → within <60 s render-result shows render-audio blob: src, render-meta '9 side(s) · 352 toy notes · 25.5 s of song per revolution · from 12.2 s · transposed +12 st · 86% match · 6 kHz mono', render-download download attr 'whoscheating-fisher-price-6kHz-mono.wav'. Toggling track-check-6 resets render-result; re-render works. Two-sided existing record: download-half-a-button + download-half-b-button are big teal buttons, download-stl-button is small underlined link containing 'needs supports — not recommended'. Single-sided: download-stl-button is big '.STL (3D PRINT)' and no half buttons. 3D PREVIEW canvas renders. 0 console errors across all flows.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/autofit", "issue": "Carry-over from iter11 — fit.tries can exceed max_tries (coarse+full() loop ignores budget). Cosmetic."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter13_render_pins.py",
+    "/app/test_reports/pytest/iter13.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "fisher_price.py now ~1200+ lines with render_song/plan_song added — still past 700-line split threshold. Consider separating geometry, MIDI parsing, fit, and audio-render modules.",
+    "server.py is approaching 800 lines — /api/render added inline; the _song_opts helper is good, but album/render/press forms share many Form(...) params that could be grouped into a shared Pydantic form model.",
+    "render_song response does not include a Cache-Control header; large WAV responses could balloon browser cache. Minor.",
+    "iter12 test suggested=5 assertion was stale after bass-penalty change; updated to {5,7}. Future melody-scoring tweaks will keep breaking exact-track assertions — consider asserting on properties (non-drum, non-bass register) instead of fixed index."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter13_render_pins.py (new)",
+    "/app/backend/tests/test_iter12_tracks_album.py (relaxed baby suggested assertion to {5,7})"
+  ],
+  "success_rate": {"backend": "100% (94/94 pytest)", "frontend": "100% of iter13 assertions, 0 console errors"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "TEST_Iter13_Pin pressing (single-sided twinkle, pin_count 3). No numbering changes beyond auto-increment.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter13 adds POST /api/render (multipart) returning audio/wav + headers X-Sides/X-Notes/X-Duration/X-Start/X-Offset/X-Fit-Score/X-Sample-Rate=6000 (CORS-exposed). plan_song is shared by /render and /album. Pin geometry switched to 1.6 mm-base triangle ramps buried 0.5 mm (PIN_BASE/PIN_SINK in fisher_price.py; SCAD prints 'pinBase'/'pinSink'; no sqrt(3)). Melody scoring now penalises bass register — baby1 suggested moved 5→7; keep assertions permissive. Frontend: Creator.onFileA drops analysis+stale resets window start so note-editor vanishes until the LOAD NOTES button is re-enabled after scan. canAnalyze requires scans.a; startsRef/filesRef guard discards obsolete analyze responses. TrackPicker.label() shows track name first. SongReview renders a blob URL and resets on any option change. DownloadPanel: two_sided ⇒ half-a/half-b are primary; one-piece STL is small underlined 'needs supports' link.",
+  "rca of the issue": "N/A — bug fix verified. Previous race condition between file-change auto re-analysis and track scan was reproducible by rapid re-upload; fix (dropAnalysis on onFileA, canAnalyze gated on scans.a, obsolete-result guard via filesRef) was verified: swapping baby1→whoscheating immediately clears note-editor and stat-notes, analyze-button is gated until the new scan arrives, and the resulting partition and caption differ from the previous file."
+}
