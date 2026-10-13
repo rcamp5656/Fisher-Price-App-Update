@@ -4,14 +4,14 @@ import { Headphones, Loader2, Download, AlertTriangle } from "lucide-react";
 import { BTN_BASE, BTN_DISABLED } from "../lib/fp";
 
 // Whole song rendered server-side as the toy plays it: 6 kHz mono, Fisher-Price notes only
-export default function SongReview({ api, file, settings, tracks, skyline, revSeconds, disabled }) {
+export default function SongReview({ api, file, settings, tracks, skyline, melodyFill = false, revSeconds, disabled }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [out, setOut] = useState(null);
   const urlRef = useRef(null);
 
   useEffect(() => () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current); }, []);
-  useEffect(() => { setOut(null); }, [file, tracks, skyline]);
+  useEffect(() => { setOut(null); }, [file, tracks, skyline, melodyFill]);
 
   const render = async () => {
     if (!file) return;
@@ -20,6 +20,7 @@ export default function SongReview({ api, file, settings, tracks, skyline, revSe
     form.append("file", file);
     form.append("tracks", (tracks || []).join(","));
     form.append("skyline", String(!!skyline));
+    form.append("melody_fill", String(!!melodyFill && !!(tracks && tracks.length)));
     form.append("duration", String(settings.autoFit ? 0 : settings.duration));
     form.append("rev_seconds", String(revSeconds));
     form.append("roll", settings.roll);
@@ -54,7 +55,7 @@ export default function SongReview({ api, file, settings, tracks, skyline, revSe
         {busy ? "RENDERING…" : "HEAR THE WHOLE SONG AS THE TOY"}
       </button>
       <p className="font-mono text-[10px] text-[#457B9D] -mt-1">
-        Converts the full MIDI to Fisher-Price notes (16 tines, staggered, toy speed) and renders it as 6 kHz mono audio for review.
+        Converts the full MIDI to Fisher-Price notes (16 tines, staggered, toy speed) and renders it as 8 kHz mono audio for review.
       </p>
       {error && <div data-testid="render-error" className="font-mono text-xs bg-[#E63946] text-white rounded-md p-2 flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> {error}</div>}
       {out && (

@@ -1,0 +1,29 @@
+{
+  "summary": "Iter14 (user bug: 'same Fisher-Price song for every MIDI' / 'use good melody track') — verified bass-penalty melody scoring + swap-MIDI reset end-to-end. Backend 101/101 pytest (94 regression + 7 new iter14). POST /api/scan: baby1.mid → suggested=5 (Tenor Sax, score=84.4 highest), bass idx=1 'Pick Bass' score=31.3 (<50), drum idxs 12/13 score=0.0; whoscheating.mid → suggested=3 'Jazz GT.' score=76.0, bass idx=2 'Ac.Bass' score=34.2 (<40); sample_twinkle.mid → suggested=0. Tightened iter12 and iter13 assertions from {5,7} → exactly 5. FRONTEND (public URL): upload baby1 → track-check-5 pre-checked, analyze → stat-notes=32 (window captured). Swap whoscheating.mid: stat-notes/editor disappear immediately (before scan completes), after scan track-check-3 checked, track-check-2 and track-check-5 unchecked, window-start-input=11, analyze → stat-notes=6, DIFFERENT note-{tone}-{beat} set from baby. Twinkle.mid: no track-picker (single track), window-start=0, analyze → stat-notes=28. Re-upload baby1.mid: editor cleared, track-check-5 pre-checked again, analyze → 32 notes again, NOT twinkle's 28 — original bug reproduced-then-fixed. render-song-button for whoscheating: render-meta '9 side(s) · 352 toy notes · 25.5 s · from 12.2 s · transposed +12 st · 86% match · 6 kHz mono'; baby1 render-meta '7 side(s) · 245 toy notes · 23.7 s · from 18.2 s · transposed +34 st · 99% match · 6 kHz mono' — meta differs between files. 0 console errors across all flows.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter14_melody_scoring.py",
+    "/app/backend/tests/test_iter13_render_pins.py",
+    "/app/backend/tests/test_iter12_tracks_album.py",
+    "/app/test_reports/pytest/iter14.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "scan_tracks.is_bass triggers when `mean < 55` even on genuinely melodic alto/tenor-range tracks (e.g., a vocal line that dips low). Baby1's Tenor Sax mean sits around 59 so it survives, but future songs with a melodic bassoon/baritone/alto range near 54-55 could be unfairly demoted. Consider only applying the bass penalty when BOTH register AND (name OR GM 32-39) agree, OR when mean <= 50.",
+    "fisher_price.py is now ~1260 lines — still past the 700-line split threshold called out in iter13. Scoring heuristics would read better as a separate melody_score() helper.",
+    "The GM-program bass window `32 <= progs[0] <= 39` only looks at the first program_change; multi-program tracks (common in GM1 arrangements) can hide a bass program behind a later change."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter14_melody_scoring.py (new, 7 tests)",
+    "/app/backend/tests/test_iter13_render_pins.py (tightened baby suggested == 5)",
+    "/app/backend/tests/test_iter12_tracks_album.py (tightened baby suggested == 5)"
+  ],
+  "success_rate": {"backend": "100% (101/101 pytest)", "frontend": "100% of iter14 assertions, 0 console errors"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "None beyond iter13's TEST_Iter13_Pin from test_press_scad_has_pin_params.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter14 verifies the melody-scoring + swap-MIDI reset fix. scan_tracks penalises bass lines (name/GM 32-39/mean<55 → ×0.4) and rewards name hints (melody/lead/vocal/voice/sing/solo/tune/main → +20). Expected suggestions: baby1=5 (Tenor Sax), whoscheating=3 (Jazz GT.), sample_twinkle=0. Frontend: Creator.onFileA calls dropAnalysis then scanFile — note-editor and stat-notes vanish immediately on re-upload, canAnalyze is gated on scans.a, scanFile re-selects suggested track and resets window start. [data-testid^='note-'] matches 'note-editor' too — filter with /^note-\\d+-\\d+$/.",
+  "rca of the issue": "Previous bug: scan_tracks.melody_score didn't penalise bass register, so GM 32-39 (Pick Bass etc.) could tie or beat the real lead on multi-instrument MIDIs — the auto-selected track ended up being whichever got the best variety/density, often the bass. Fix (fisher_price.py scan_tracks): compute `is_bass = 'bass' in name/instrument label OR GM 32-39 OR mean pitch < 55`; if is_bass then score *= 0.4. Also +20 for name hints melody/lead/vocal/voice/sing/solo/tune/main. Verified: baby1 Pick Bass dropped to 31.3 (vs Tenor Sax 84.4), whoscheating Ac.Bass dropped to 34.2 (vs Jazz GT. 76.0)."
+}

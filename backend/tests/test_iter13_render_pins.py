@@ -110,9 +110,9 @@ class TestScanMelody:
         assert data["suggested"] != 2, f"suggested should not be bass track 2, got {data['suggested']}"
         assert data["suggested"] == 3, f"expected suggested=3, got {data['suggested']}"
 
-    def test_baby_suggested_in_set(self):
+    def test_baby_suggested_exact(self):
         files = {"file": (BABY1.name, BABY1.read_bytes(), "audio/midi")}
         r = requests.post(f"{API}/scan", files=files, data={}, timeout=60)
         assert r.status_code == 200
         data = r.json()
-        assert data["suggested"] in (5, 7), f"got {data['suggested']}"
+        assert data["suggested"] == 5, f"got {data['suggested']}"

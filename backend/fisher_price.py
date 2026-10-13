@@ -208,26 +208,67 @@ def scan_tracks(midi_bytes: bytes) -> Dict:
         })
     melodic = [t for t in tracks if not t["drums"]]
     suggested = max(melodic, key=lambda t: t["melody_score"])["index"] if melodic else None
-    return {"tracks": tracks, "suggested": suggested, "total": round(total, 2),
+    title = ""
+    for m in mid.tracks[0]:
+        if m.type == "track_name" and m.name.strip():
+            title = m.name.strip()
+            break
+    return {"tracks": tracks, "suggested": suggested, "total": round(total, 2), "title": title[:40],
             "events": [[round(t, 3), n, ti] for t, n, c, ti in events if c != DRUM_CHANNEL]}
+
+
+def _skyline(events: List[Tuple[float, int]], bucket: float = 0.05) -> List[Tuple[float, int]]:
+    """Top note per time bucket — the line a listener hears as 'the tune'."""
+    top: Dict[int, Tuple[float, int]] = {}
+    for t, n in events:
+        key = int(round(t / bucket))
+        if key not in top or n > top[key][1]:
+            top[key] = (t, n)
+    return sorted(top.values())
+
+
+MELODY_GAP = 1.5  # a rest this long in the melody track gets filled from the other instruments
+
+
+def _melody_fill(sel: List[Tuple[float, int]], others: List[Tuple[float, int]]) -> List[Tuple[float, int]]:
+    """Where the melody track rests for more than MELODY_GAP, borrow the
+    skyline of the other (non-bass) instruments, thinned to >= 0.25 s apart."""
+    if not sel or not others:
+        return sel
+    sky = _skyline(others, 0.1)
+    out = list(sel)
+    times = sorted(t for t, _ in sel)
+    for a, b in zip(times, times[1:]):
+        if b - a < MELODY_GAP:
+            continue
+        last = -1.0
+        for t, n in sky:
+            if a + 0.3 <= t <= b - 0.3 and t - last >= 0.25:
+                out.append((t, n))
+                last = t
+    return sorted(out)
 
 
 def parse_midi_events(midi_bytes: bytes, duration: float,
                       start: float = 0.0, tracks: Optional[List[int]] = None,
-                      skyline: bool = False) -> List[Tuple[float, int]]:
+                      skyline: bool = False, melody_fill: bool = False) -> List[Tuple[float, int]]:
     """Note-ons inside [start, start+duration) from the chosen tracks (all
     pitched tracks when None). Drums (channel 10) are never pitched notes on
-    the toy and are skipped. `skyline` keeps only the top note of each chord."""
+    the toy and are skipped. `skyline` keeps only the top note of each chord;
+    `melody_fill` patches rests in the chosen tracks with the other instruments."""
     sel = set(tracks) if tracks else None
-    events = [(t - start, n) for t, n, c, ti in _all_note_events(midi_bytes)
-              if c != DRUM_CHANNEL and start <= t < start + duration and (sel is None or ti in sel)]
+    allev = [(t, n, c, ti) for t, n, c, ti in _all_note_events(midi_bytes)
+             if c != DRUM_CHANNEL and start <= t < start + duration]
+    events = [(t - start, n) for t, n, c, ti in allev if sel is None or ti in sel]
     if skyline and events:
-        top: Dict[int, Tuple[float, int]] = {}
-        for t, n in events:
-            key = int(round(t * 20))  # 50 ms buckets
-            if key not in top or n > top[key][1]:
-                top[key] = (t, n)
-        events = sorted(top.values())
+        events = _skyline(events)
+    if melody_fill and sel is not None:
+        means: Dict[int, float] = {}
+        for ti in {e[3] for e in allev}:
+            ns = [n for _, n, _, x in allev if x == ti]
+            means[ti] = sum(ns) / len(ns)
+        others = [(t - start, n) for t, n, c, ti in allev if ti not in sel and means[ti] >= 55]
+        events = _melody_fill(events, others)
     return events
 
 
@@ -382,7 +423,8 @@ def compare_fit(events: List[Tuple[float, int]], offset: int, partition: List[Li
 def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
              comb: Comb = DEFAULT_COMB, roll: str = "before", auto_transpose: bool = True,
              manual_offset: int = 0, max_tries: int = 12000, tempo_range: float = 0.35,
-             nudge: float = 0.5, tracks: Optional[List[int]] = None, skyline: bool = False) -> Dict:
+             nudge: float = 0.5, tracks: Optional[List[int]] = None, skyline: bool = False,
+             melody_fill: bool = False) -> Dict:
     """Re-map the MIDI slice onto the 86-beat disc up to `max_tries` ways —
     varying how many MIDI seconds fill one revolution (tempo within
     ±tempo_range) and a fine shift of the window start (±nudge s) — comparing
@@ -390,7 +432,7 @@ def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
     import numpy as np
     d_lo, d_hi = rev_seconds * (1 - tempo_range), rev_seconds * (1 + tempo_range)
     base = max(0.0, start - nudge)
-    all_events = parse_midi_events(midi_bytes, d_hi + 2 * nudge, base, tracks, skyline)
+    all_events = parse_midi_events(midi_bytes, d_hi + 2 * nudge, base, tracks, skyline, melody_fill)
     if not all_events:
         rec = events_to_record([], rev_seconds, auto_transpose, manual_offset, comb, roll=roll)
         rec["events"] = []
@@ -995,9 +1037,9 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
 def analyze(midi_bytes: bytes, duration: float = 25.0, start: float = 0.0,
             auto_transpose: bool = True, manual_offset: int = 0,
             comb: Comb = DEFAULT_COMB, roll: str = "before", rev_seconds: float = 25.0,
-            tracks: Optional[List[int]] = None, skyline: bool = False) -> Dict:
+            tracks: Optional[List[int]] = None, skyline: bool = False, melody_fill: bool = False) -> Dict:
     """MIDI window -> editable pitch x 86 partition plus mapping stats."""
-    events = parse_midi_events(midi_bytes, duration, start, tracks, skyline)
+    events = parse_midi_events(midi_bytes, duration, start, tracks, skyline, melody_fill)
     rec = events_to_record(events, duration, auto_transpose, manual_offset, comb, roll=roll)
     rec["events"] = [[round(t, 3), n] for t, n in sorted(events)]
     rec["fit"] = compare_fit(events, rec["offset"], rec["partition"], duration, rev_seconds, comb) if events else None
@@ -1005,27 +1047,27 @@ def analyze(midi_bytes: bytes, duration: float = 25.0, start: float = 0.0,
 
 
 REAL_PITCH_OFFSET = -4   # the toy's comb sounds 4 semitones below Fred's notation (A-flat major)
-RENDER_RATE = 6000       # review audio: 6 kHz mono, like the toy's own tinny voice
+RENDER_RATE = 8000       # review audio: 8 kHz mono, like the toy's own tinny voice
 
 
 def plan_song(midi_bytes: bytes, comb: Comb, tracks: Optional[List[int]], skyline: bool,
               duration: float, rev_seconds: float, roll: str, auto_transpose: bool,
-              manual_offset: int) -> Dict:
+              manual_offset: int, melody_fill: bool = False) -> Dict:
     """Slice the whole song (selected tracks) into consecutive 86-beat sides
     with one transposition and one tempo. duration <= 0 auto-fits the tempo."""
-    allev = parse_midi_events(midi_bytes, 36000.0, 0.0, tracks, skyline)
+    allev = parse_midi_events(midi_bytes, 36000.0, 0.0, tracks, skyline, melody_fill)
     if not allev:
         raise ValueError("No playable notes in the selected tracks")
     first, last = allev[0][0], allev[-1][0]
     start, fit = max(0.0, first - 0.2), None
     if duration <= 0:
         rec = auto_fit(midi_bytes, start, rev_seconds, comb, roll, auto_transpose, manual_offset,
-                       12000, 0.35, 0.5, tracks, skyline)
+                       12000, 0.35, 0.5, tracks, skyline, melody_fill)
         fit, duration, start = rec["fit"], rec["fit"]["duration"], rec["fit"]["start"]
     offset = choose_transposition([n for _, n in allev], comb) if auto_transpose else manual_offset
     n_sides = max(1, math.ceil((last - start + 0.01) / duration))
-    sides = [analyze(midi_bytes, duration, start + k * duration, False, offset, comb, roll, rev_seconds, tracks, skyline)
-             for k in range(n_sides)]
+    sides = [analyze(midi_bytes, duration, start + k * duration, False, offset, comb, roll, rev_seconds,
+                     tracks, skyline, melody_fill) for k in range(n_sides)]
     return {"sides": sides, "duration": duration, "start": start, "offset": offset, "fit": fit,
             "note_count": sum(s["note_count"] for s in sides)}
 

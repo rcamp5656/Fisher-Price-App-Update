@@ -3,7 +3,7 @@ import axios from "axios";
 import { Album, Loader2, Download, Disc3, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { BTN_BASE, BTN_DISABLED } from "../lib/fp";
 
-export default function AlbumPanel({ api, file, settings, tracks, skyline, revSeconds, disabled, onOpenDisc }) {
+export default function AlbumPanel({ api, file, settings, tracks, skyline, melodyFill = false, revSeconds, disabled, onOpenDisc }) {
   const [album, setAlbum] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -27,6 +27,7 @@ export default function AlbumPanel({ api, file, settings, tracks, skyline, revSe
     form.append("title", settings.title || file.name.replace(/\.[^.]+$/, ""));
     form.append("tracks", (tracks || []).join(","));
     form.append("skyline", String(!!skyline));
+    form.append("melody_fill", String(!!melodyFill && !!(tracks && tracks.length)));
     form.append("duration", String(settings.autoFit ? 0 : settings.duration));
     form.append("rev_seconds", String(revSeconds));
     form.append("two_sided", String(!!settings.twoSided));

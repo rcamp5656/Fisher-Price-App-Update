@@ -19,7 +19,7 @@ import SongReview from "../components/SongReview";
 import { CARD, BTN_BASE, BTN_DISABLED, TOY_REV_SECONDS, applyComb, emptyPartition } from "../lib/fp";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-const stem = (name) => name.replace(/\.[^.]+$/, "").slice(0, 40);
+const stem = (name) => name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
 const emptyAnalysis = () => ({
   partition: emptyPartition(), offset: 0, exact: 0, adjusted: 0, merged: 0, staggered: 0, note_count: 0,
 });
@@ -35,6 +35,7 @@ export default function Creator() {
   const [scans, setScans] = useState({ a: null, b: null });
   const [tracks, setTracks] = useState({ a: null, b: null });
   const [skyline, setSkyline] = useState(false);
+  const [melodyFill, setMelodyFill] = useState(true);
   const [starts, setStarts] = useState({ a: 0, b: 0 });
   const startsRef = useRef(starts);
   startsRef.current = starts;
@@ -105,7 +106,7 @@ export default function Creator() {
     if (skipStale.current) { skipStale.current = false; return; }
     if (analysis) setStale(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files.a, files.b, starts.a, starts.b, s.duration, s.autoTranspose, s.manualOffset, s.twoSided, s.sideMode, s.roll, s.autoFit, tracks.a, tracks.b, skyline, combVersion]);
+  }, [files.a, files.b, starts.a, starts.b, s.duration, s.autoTranspose, s.manualOffset, s.twoSided, s.sideMode, s.roll, s.autoFit, tracks.a, tracks.b, skyline, melodyFill, combVersion]);
 
   const scanFile = async (key, f) => {
     const form = new FormData();
@@ -117,6 +118,8 @@ export default function Creator() {
       const melodic = (data.tracks || []).filter((t) => !t.drums);
       const pick = melodic.length > 1 && data.suggested != null ? [data.suggested] : null;
       setTracks((p) => ({ ...p, [key]: pick }));
+      // the song's own title (first track name) beats the file name
+      if (data.title) setS((p) => ({ ...p, [key === "a" ? "title" : "titleB"]: data.title.slice(0, 40) }));
       if (pick) { const t = melodic.find((x) => x.index === data.suggested); if (t && key === "a") setStarts((p) => ({ ...p, a: Math.max(0, Math.floor(t.first)) })); }
     } catch (e) { setScans((p) => ({ ...p, [key]: null })); }
   };
@@ -133,6 +136,7 @@ export default function Creator() {
     form.append("file", file);
     form.append("tracks", (sel || []).join(","));
     form.append("skyline", String(skyline));
+    form.append("melody_fill", String(melodyFill && !!(sel && sel.length)));
     form.append("duration", String(duration));
     form.append("start", String(start));
     form.append("auto_transpose", String(s.autoTranspose));
@@ -358,7 +362,7 @@ export default function Creator() {
             </div>
             <UploadZone file={files.a} onFile={onFileA} onError={setError} testId="midi-upload-zone" label={needsB ? "Side A" : null} />
             {scans.a && (
-              <TrackPicker scan={scans.a} tracks={tracks.a} onTracks={(v) => setTracks((p) => ({ ...p, a: v }))} skyline={skyline} onSkyline={setSkyline} />
+              <TrackPicker scan={scans.a} tracks={tracks.a} onTracks={(v) => setTracks((p) => ({ ...p, a: v }))} skyline={skyline} onSkyline={setSkyline} melodyFill={melodyFill} onMelodyFill={setMelodyFill} />
             )}
             {scans.a && (
               <SongOverview scan={scans.a} tracks={tracks.a} duration={s.duration} start={starts.a} onStart={(v) => setStarts((p) => ({ ...p, a: v }))} label={needsB ? "Side A" : "Whole song"} revSeconds={revSeconds} />
@@ -367,7 +371,7 @@ export default function Creator() {
               <>
                 <UploadZone file={files.b} onFile={onFileB} onError={setError} testId="midi-upload-zone-b" label="Side B" />
                 {scans.b && (
-                  <TrackPicker scan={scans.b} tracks={tracks.b} onTracks={(v) => setTracks((p) => ({ ...p, b: v }))} skyline={skyline} onSkyline={setSkyline} />
+                  <TrackPicker scan={scans.b} tracks={tracks.b} onTracks={(v) => setTracks((p) => ({ ...p, b: v }))} skyline={skyline} onSkyline={setSkyline} melodyFill={melodyFill} onMelodyFill={setMelodyFill} />
                 )}
                 {scans.b && (
                   <SongOverview scan={scans.b} tracks={tracks.b} duration={s.duration} start={starts.b} onStart={(v) => setStarts((p) => ({ ...p, b: v }))} label="Side B" revSeconds={revSeconds} />
@@ -404,11 +408,11 @@ export default function Creator() {
           {result && <DownloadPanel api={API} result={result} />}
 
           {files.a && scans.a && (
-            <SongReview api={API} file={files.a} settings={s} tracks={tracks.a} skyline={skyline} revSeconds={revSeconds} disabled={!!busy} />
+            <SongReview api={API} file={files.a} settings={s} tracks={tracks.a} skyline={skyline} melodyFill={melodyFill} revSeconds={revSeconds} disabled={!!busy} />
           )}
           {files.a && scans.a && (
             <AlbumPanel
-              api={API} file={files.a} settings={s} tracks={tracks.a} skyline={skyline} revSeconds={revSeconds}
+              api={API} file={files.a} settings={s} tracks={tracks.a} skyline={skyline} melodyFill={melodyFill} revSeconds={revSeconds}
               disabled={!!busy} onOpenDisc={(id) => axios.get(`${API}/conversions/${id}`).then(({ data }) => { openHistory(data); loadHistory(); })}
             />
           )}

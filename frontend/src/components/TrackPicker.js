@@ -18,7 +18,7 @@ function Strip({ track, total, selected }) {
   );
 }
 
-export default function TrackPicker({ scan, tracks, onTracks, skyline, onSkyline }) {
+export default function TrackPicker({ scan, tracks, onTracks, skyline, onSkyline, melodyFill = false, onMelodyFill }) {
   const label = (t) => (t.name && t.name.trim() ? `${t.name.trim()} · ${t.instrument}` : t.instrument);
   const ctxRef = useRef(null);
   const [playingIdx, setPlayingIdx] = useState(null);
@@ -102,6 +102,10 @@ export default function TrackPicker({ scan, tracks, onTracks, skyline, onSkyline
           );
         })}
       </div>
+      <label className="flex items-center gap-2 font-mono text-[11px] cursor-pointer">
+        <input type="checkbox" data-testid="melody-fill-check" checked={!!melodyFill} onChange={(e) => onMelodyFill && onMelodyFill(e.target.checked)} className="accent-[#E63946] h-4 w-4" />
+        Fill melody rests from the other instruments (intelligent mix — the tune stays in front)
+      </label>
       <label className="flex items-center gap-2 font-mono text-[11px] cursor-pointer">
         <input type="checkbox" data-testid="skyline-check" checked={!!skyline} onChange={(e) => onSkyline(e.target.checked)} className="accent-[#E63946] h-4 w-4" />
         Skyline — keep only the top note of chords (good for piano / guitar tracks)

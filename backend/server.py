@@ -244,6 +244,7 @@ async def analyze(
     rev_seconds: float = Form(25.0),
     tracks: str = Form(""),
     skyline: bool = Form(False),
+    melody_fill: bool = Form(False),
 ):
     raw = await _read_midi(file)
     comb = await _comb()
@@ -259,6 +260,7 @@ async def analyze(
             rev_seconds=max(5.0, min(60.0, rev_seconds)),
             tracks=_tracks(tracks),
             skyline=skyline,
+            melody_fill=melody_fill,
         )
     except Exception as e:
         logging.exception("analysis failed")
@@ -282,6 +284,7 @@ async def autofit(
     max_tries: int = Form(12000),
     tracks: str = Form(""),
     skyline: bool = Form(False),
+    melody_fill: bool = Form(False),
 ):
     """Re-map the MIDI slice up to max_tries ways (tempo ±35 %, start ±0.5 s) and keep the closest match."""
     raw = await _read_midi(file)
@@ -298,6 +301,7 @@ async def autofit(
             max_tries=max(100, min(12000, max_tries)),
             tracks=_tracks(tracks),
             skyline=skyline,
+            melody_fill=melody_fill,
         )
     except Exception as e:
         logging.exception("auto-fit failed")
@@ -410,7 +414,8 @@ async def _build_album(album_id: str, raw: bytes, o: dict):
         comb = await _comb()
         tracks, skyline = o["tracks"], o["skyline"]
         plan = await run_in_threadpool(fp.plan_song, raw, comb, tracks, skyline, o["duration"],
-                                       o["rev_seconds"], o["roll"], o["auto_transpose"], o["manual_offset"])
+                                       o["rev_seconds"], o["roll"], o["auto_transpose"], o["manual_offset"],
+                                       o.get("melody_fill", False))
         sides, duration, start, offset, fit = plan["sides"], plan["duration"], plan["start"], plan["offset"], plan["fit"]
         n_sides = len(sides)
         per_disc = 2 if o["two_sided"] else 1
@@ -449,9 +454,9 @@ async def _build_album(album_id: str, raw: bytes, o: dict):
         await db.albums.update_one({"id": album_id}, {"$set": {"status": "error", "error": str(e)}})
 
 
-def _song_opts(tracks, skyline, duration, rev_seconds, roll, auto_transpose, manual_offset) -> dict:
+def _song_opts(tracks, skyline, duration, rev_seconds, roll, auto_transpose, manual_offset, melody_fill=False) -> dict:
     return {
-        "tracks": _tracks(tracks), "skyline": bool(skyline),
+        "tracks": _tracks(tracks), "skyline": bool(skyline), "melody_fill": bool(melody_fill),
         "duration": duration if duration <= 0 else max(5.0, min(60.0, duration)),
         "rev_seconds": max(5.0, min(60.0, rev_seconds)), "roll": "after" if roll == "after" else "before",
         "auto_transpose": bool(auto_transpose), "manual_offset": manual_offset,
@@ -468,14 +473,15 @@ async def render_song(
     roll: str = Form("before"),
     auto_transpose: bool = Form(True),
     manual_offset: int = Form(0),
+    melody_fill: bool = Form(False),
 ):
-    """Whole song as the toy will play it: 6 kHz mono WAV of Fisher-Price notes, for review."""
+    """Whole song as the toy will play it: 8 kHz mono WAV of Fisher-Price notes, for review."""
     raw = await _read_midi(file)
     comb = await _comb()
-    o = _song_opts(tracks, skyline, duration, rev_seconds, roll, auto_transpose, manual_offset)
+    o = _song_opts(tracks, skyline, duration, rev_seconds, roll, auto_transpose, manual_offset, melody_fill)
     try:
         plan = await run_in_threadpool(fp.plan_song, raw, comb, o["tracks"], o["skyline"], o["duration"],
-                                       o["rev_seconds"], o["roll"], o["auto_transpose"], o["manual_offset"])
+                                       o["rev_seconds"], o["roll"], o["auto_transpose"], o["manual_offset"], o["melody_fill"])
         wav = await run_in_threadpool(fp.render_song, plan["sides"], o["rev_seconds"], comb)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -508,13 +514,14 @@ async def make_album(
     roll: str = Form("before"),
     auto_transpose: bool = Form(True),
     manual_offset: int = Form(0),
+    melody_fill: bool = Form(False),
 ):
     """Cut the whole song onto as many discs as it takes (duration 0 = auto-fit the tempo)."""
     raw = await _read_midi(file)
     two = bool(two_sided)
     o = {
         "title": (title or Path(file.filename).stem or "Album").strip()[:30] or "Album",
-        "filename": file.filename, "tracks": _tracks(tracks), "skyline": bool(skyline),
+        "filename": file.filename, "tracks": _tracks(tracks), "skyline": bool(skyline), "melody_fill": bool(melody_fill),
         "duration": duration if duration <= 0 else max(5.0, min(60.0, duration)),
         "rev_seconds": max(5.0, min(60.0, rev_seconds)), "two_sided": two,
         "thickness": max(4.5 if two else 1.5, min(8.0, thickness)), "engrave": bool(engrave),
