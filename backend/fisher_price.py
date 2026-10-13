@@ -205,6 +205,133 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
     }
 
 
+TEMPO_PENALTY = 12  # score points lost per 100 % tempo change, so the original speed wins ties
+
+
+def _event_tone(note: int, offset: int, comb: Comb) -> int:
+    m = note + offset
+    return comb.notes.index(m if m in comb.notes else snap_note(m, comb))
+
+
+def compare_fit(events: List[Tuple[float, int]], offset: int, partition: List[List[bool]],
+                duration: float, rev_seconds: float, comb: Comb = DEFAULT_COMB) -> Dict:
+    """Score how closely the disc reproduces the MIDI slice: every MIDI note is
+    matched to the nearest pin of its (snapped) pitch within 2 beats; the score
+    blends notes found, timing error and pitch exactness, minus a small tempo
+    penalty so the original speed wins ties."""
+    n = len(events)
+    if n == 0:
+        return {"score": 0.0, "matched": 0, "timing_ms": 0.0, "exact": 0, "tempo": duration / rev_seconds}
+    beat_sec = duration / MAX_BEAT
+    pins: Dict[int, List[float]] = {}
+    for tone, row in enumerate(partition):
+        pins[tone] = [b * beat_sec for b, on in enumerate(row) if on]
+    matched = 0
+    err = 0.0
+    exact = 0
+    for t, note in sorted(events):
+        if note + offset in comb.notes:
+            exact += 1
+        tone = _event_tone(note, offset, comb)
+        cands = pins[tone]
+        if not cands:
+            continue
+        k = min(range(len(cands)), key=lambda i: abs(cands[i] - t))
+        dt = abs(cands[k] - t)
+        if dt <= 2 * beat_sec:
+            matched += 1
+            err += dt
+            cands.pop(k)
+    mean_err_beats = (err / matched / beat_sec) if matched else 1.0
+    tempo = duration / rev_seconds
+    score = 100 * (0.5 * matched / n + 0.3 * (1 - min(1.0, mean_err_beats)) + 0.2 * exact / n) - TEMPO_PENALTY * abs(tempo - 1)
+    return {
+        "score": round(max(0.0, score), 1),
+        "matched": matched,
+        "timing_ms": round((err / matched) * 1000, 1) if matched else 0.0,
+        "exact": exact,
+        "tempo": round(tempo, 3),
+    }
+
+
+def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
+             comb: Comb = DEFAULT_COMB, roll: str = "before", auto_transpose: bool = True,
+             manual_offset: int = 0, max_tries: int = 12000, tempo_range: float = 0.35,
+             nudge: float = 0.5) -> Dict:
+    """Re-map the MIDI slice onto the 86-beat disc up to `max_tries` ways —
+    varying how many MIDI seconds fill one revolution (tempo within
+    ±tempo_range) and a fine shift of the window start (±nudge s) — comparing
+    each disc against the MIDI and keeping the closest match."""
+    import numpy as np
+    d_lo, d_hi = rev_seconds * (1 - tempo_range), rev_seconds * (1 + tempo_range)
+    base = max(0.0, start - nudge)
+    all_events = parse_midi_events(midi_bytes, d_hi + 2 * nudge, base)
+    if not all_events:
+        rec = events_to_record([], rev_seconds, auto_transpose, manual_offset, comb, roll=roll)
+        rec["events"] = []
+        rec["fit"] = {"score": 0.0, "tries": 0, "duration": rev_seconds, "start": start, "tempo": 1.0, "matched": 0, "timing_ms": 0.0}
+        return rec
+    notes = [n for _, n in all_events]
+    offset = choose_transposition(notes, comb) if auto_transpose else manual_offset
+    T = np.array([t for t, _ in all_events])
+    tones = np.array([_event_tone(n, offset, comb) for n in notes])
+    single = np.array([len(comb.tines[t]) == 1 for t in range(comb.tones)])
+
+    def quick(delta: float, dur: float) -> float:
+        tt = T - delta
+        m = (tt >= 0) & (tt < dur)
+        tt, tn = tt[m], tones[m]
+        n = len(tt)
+        if n == 0:
+            return -1.0
+        bs = dur / MAX_BEAT
+        beats = np.clip(np.rint(tt / bs).astype(int), 0, MAX_BEAT - 1)
+        err = np.abs(beats * bs - tt) / bs
+        keys = np.unique(tn * MAX_BEAT + beats)
+        merged = n - len(keys)
+        _, bc = np.unique(keys % MAX_BEAT, return_counts=True)
+        chords = int((bc - 1).sum())
+        kt, kb = keys // MAX_BEAT, keys % MAX_BEAT
+        rep = int(((kt[1:] == kt[:-1]) & (kb[1:] - kb[:-1] == 1) & single[kt[1:]]).sum())
+        return 100 * (1 - 0.5 * (merged + chords + rep) / n - 0.3 * float(err.mean())) - TEMPO_PENALTY * abs(dur / rev_seconds - 1)
+
+    deltas = np.arange(0, 2 * nudge + 1e-9, 0.05)
+    n_dur = max(50, (max_tries - 600) // len(deltas))
+    durs = np.linspace(d_lo, d_hi, n_dur)
+    coarse = sorted(((quick(d, u), d, u) for d in deltas for u in durs), reverse=True)
+    tries = len(coarse)
+
+    def full(delta: float, dur: float):
+        delta, dur = float(delta), float(dur)
+        ev = [(t - delta, n) for t, n in all_events if 0 <= t - delta < dur]
+        rec = events_to_record(ev, dur, False, offset, comb, roll=roll)
+        fit = compare_fit(ev, offset, rec["partition"], dur, rev_seconds, comb)
+        return fit["score"], delta, dur, rec, fit, ev
+
+    best = None
+    for _, d, u in coarse[:300]:
+        cand = full(d, u)
+        tries += 1
+        if best is None or cand[0] > best[0]:
+            best = cand
+        if best[0] >= 99.5:
+            break
+    if best[0] < 99.5:
+        _, d0, u0, *_ = best
+        fine = [(d0 + dd, u0 + du) for dd in np.arange(-0.05, 0.051, 0.01) for du in np.arange(-0.1, 0.101, 0.02)]
+        for d, u in fine:
+            if 0 <= d <= 2 * nudge and d_lo <= u <= d_hi and tries < max_tries:
+                cand = full(float(d), float(u))
+                tries += 1
+                if cand[0] > best[0]:
+                    best = cand
+    score, delta, dur, rec, fit, ev = best
+    rec["events"] = [[round(t, 3), n] for t, n in sorted(ev)]
+    rec["fit"] = {**fit, "tries": tries, "duration": round(float(dur), 2), "start": round(base + float(delta), 2),
+                  "nudge": round(base + float(delta) - start, 2), "offset": offset}
+    return rec
+
+
 # ---------------------------------------------------------------------------
 # 16 tones -> 22 physical tracks (doubled tracks let fast repeats reset)
 # ---------------------------------------------------------------------------
@@ -734,11 +861,13 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
 
 def analyze(midi_bytes: bytes, duration: float = 25.0, start: float = 0.0,
             auto_transpose: bool = True, manual_offset: int = 0,
-            comb: Comb = DEFAULT_COMB, roll: str = "before") -> Dict:
+            comb: Comb = DEFAULT_COMB, roll: str = "before", rev_seconds: float = 25.0) -> Dict:
     """MIDI window -> editable pitch x 86 partition plus mapping stats."""
     events = parse_midi_events(midi_bytes, duration, start)
-    return _finish_analysis(events_to_record(events, duration, auto_transpose, manual_offset, comb, roll=roll),
-                            duration, start)
+    rec = events_to_record(events, duration, auto_transpose, manual_offset, comb, roll=roll)
+    rec["events"] = [[round(t, 3), n] for t, n in sorted(events)]
+    rec["fit"] = compare_fit(events, rec["offset"], rec["partition"], duration, rev_seconds, comb) if events else None
+    return _finish_analysis(rec, duration, start)
 
 
 def _finish_analysis(rec: Dict, duration: float, start: float) -> Dict:

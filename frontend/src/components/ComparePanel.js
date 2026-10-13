@@ -1,6 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Play, Square, ArrowLeftRight } from "lucide-react";
 import { NOTES, MAX_BEAT, REAL_PITCH_OFFSET, midiToFreq, countNotes, diffPartitions } from "../lib/fp";
+
+// MIDI slice as written → [{t (s), midi}] in the toy's key; disc grid → [{t, midi}] at toy speed
+const midiNotes = (events, offset) => events.map(([t, n]) => ({ t, midi: n + offset + REAL_PITCH_OFFSET }));
+const discNotes = (partition, beatSec) => {
+  const out = [];
+  partition.forEach((row, tone) => row.forEach((on, b) => { if (on) out.push({ t: b * beatSec, midi: NOTES[tone] + REAL_PITCH_OFFSET }); }));
+  return out;
+};
 import { pluck, newCtx } from "../hooks/useMusicBox";
 
 // one compact 16 x 86 grid — `mark` colours cells that differ from the other version
@@ -24,10 +32,11 @@ function MiniGrid({ partition, mark, color, beat, testId }) {
   );
 }
 
-// plays a partition grid at toy speed, reporting the playhead beat
-function useGridPlayer(revSeconds) {
+// plays a list of {t, midi} notes, reporting the playhead position in beats (t / beatSec)
+function useNotePlayer() {
   const ctxRef = useRef(null);
   const t0Ref = useRef(0);
+  const beatRef = useRef(1);
   const [which, setWhich] = useState(null);
   const [beat, setBeat] = useState(-1);
   const stop = () => { if (ctxRef.current) ctxRef.current.close(); ctxRef.current = null; setWhich(null); setBeat(-1); };
@@ -37,39 +46,42 @@ function useGridPlayer(revSeconds) {
     let raf;
     const tick = () => {
       const ctx = ctxRef.current;
-      if (ctx) setBeat((ctx.currentTime - t0Ref.current) / (revSeconds / MAX_BEAT));
+      if (ctx) setBeat((ctx.currentTime - t0Ref.current) / beatRef.current);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [which, revSeconds]);
-  const play = (key, partition) => {
+  }, [which]);
+  const play = (key, notes, beatSec) => {
     stop();
     const ctx = newCtx();
     ctxRef.current = ctx;
-    const beatSec = revSeconds / MAX_BEAT;
+    beatRef.current = beatSec;
     const t0 = ctx.currentTime + 0.1;
     t0Ref.current = t0;
     let last = 0;
-    partition.forEach((row, tone) => row.forEach((on, b) => {
-      if (!on) return;
-      last = Math.max(last, b);
-      pluck(ctx, ctx.destination, midiToFreq(NOTES[tone] + REAL_PITCH_OFFSET), t0 + b * beatSec);
-    }));
+    notes.forEach(({ t, midi }) => { last = Math.max(last, t); pluck(ctx, ctx.destination, midiToFreq(midi), t0 + t); });
     setWhich(key);
-    setTimeout(() => { if (ctxRef.current === ctx) stop(); }, ((last + 1) * beatSec + 1.5) * 1000);
+    setTimeout(() => { if (ctxRef.current === ctx) stop(); }, (last + 1.5) * 1000);
   };
   return { which, beat, play, stop };
 }
 
-export default function ComparePanel({ midi, disc, revSeconds }) {
+export default function ComparePanel({ midi, disc, revSeconds, events, offset = 0, duration, fit }) {
   const { moved, placed } = useMemo(() => diffPartitions(midi, disc), [midi, disc]);
-  const { which, beat, play, stop } = useGridPlayer(revSeconds);
+  const { which, beat, play, stop } = useNotePlayer();
   if (!midi) return null;
+  const midiBeatSec = (duration || revSeconds) / MAX_BEAT;
+  const discBeatSec = revSeconds / MAX_BEAT;
+  const hasEvents = events && events.length > 0;
+  const sources = {
+    midi: hasEvents ? [midiNotes(events, offset), midiBeatSec] : [discNotes(midi, discBeatSec), discBeatSec],
+    disc: [discNotes(disc, discBeatSec), discBeatSec],
+  };
   const chords = (() => { let n = 0; for (let b = 0; b < MAX_BEAT; b++) { const c = midi.reduce((s, r) => s + (r[b] ? 1 : 0), 0); if (c > 1) n += c - 1; } return n; })();
-  const Btn = ({ k, part, label }) => (
+  const Btn = ({ k, label }) => (
     <button
-      type="button" data-testid={`compare-play-${k}`} onClick={() => (which === k ? stop() : play(k, part))}
+      type="button" data-testid={`compare-play-${k}`} onClick={() => (which === k ? stop() : play(k, ...sources[k]))}
       className={`font-sans font-black text-[11px] px-2 py-1 rounded border-2 border-[#1D3557] flex items-center gap-1 ${which === k ? "bg-[#1D3557] text-white" : "bg-[#2A9D8F] text-white"}`}
     >
       {which === k ? <Square className="h-3 w-3" /> : <Play className="h-3 w-3" />} {which === k ? "STOP" : label}
@@ -84,20 +96,23 @@ export default function ComparePanel({ midi, disc, revSeconds }) {
           {moved.size === 0 && placed.size === 0
             ? "identical — the toy plays exactly what the MIDI wrote"
             : `${moved.size} note(s) moved to free beats${chords ? ` (${chords} were stacked in chords)` : ""} · ${countNotes(midi)} MIDI notes → ${countNotes(disc)} pins`}
+          {fit && (
+            <span data-testid="compare-fit"> · <b className="text-[#1D3557]">{Math.round(fit.score)}% match</b>{fit.tries ? ` after ${fit.tries.toLocaleString()} tries` : ""} · ±{Math.round(fit.timing_ms)} ms · toy plays at ×{Number(fit.tempo).toFixed(2)} tempo</span>
+          )}
         </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] text-[#457B9D]">MIDI slice as written · <span className="inline-block h-2 w-2 bg-[#FFB703] border border-[#1D3557] align-middle" /> will move</span>
-            <Btn k="midi" part={midi} label="HEAR MIDI" />
+            <span className="font-mono text-[10px] text-[#457B9D]">MIDI slice as written{hasEvents ? " (true timing)" : ""} · <span className="inline-block h-2 w-2 bg-[#FFB703] border border-[#1D3557] align-middle" /> will move</span>
+            <Btn k="midi" label="HEAR MIDI" />
           </div>
           <MiniGrid partition={midi} mark={moved} color="bg-[#FFB703]" beat={which === "midi" ? beat : -1} testId="compare-grid-midi" />
         </div>
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] text-[#457B9D]">Disc as the toy plays it · <span className="inline-block h-2 w-2 bg-[#2A9D8F] border border-[#1D3557] align-middle" /> moved here</span>
-            <Btn k="disc" part={disc} label="HEAR DISC" />
+            <span className="font-mono text-[10px] text-[#457B9D]">Disc as the toy plays it ({revSeconds}s / rev) · <span className="inline-block h-2 w-2 bg-[#2A9D8F] border border-[#1D3557] align-middle" /> moved here</span>
+            <Btn k="disc" label="HEAR DISC" />
           </div>
           <MiniGrid partition={disc} mark={placed} color="bg-[#2A9D8F]" beat={which === "disc" ? beat : -1} testId="compare-grid-disc" />
         </div>

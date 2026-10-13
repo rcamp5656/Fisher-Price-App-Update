@@ -77,6 +77,8 @@ class Analysis(BaseModel):
     duration: float
     start: float
     beats: int
+    events: List[List[float]] = []
+    fit: Optional[dict] = None
 
 
 class PressRequest(BaseModel):
@@ -223,6 +225,7 @@ async def analyze(
     auto_transpose: bool = Form(True),
     manual_offset: int = Form(0),
     roll: str = Form("before"),
+    rev_seconds: float = Form(25.0),
 ):
     raw = await _read_midi(file)
     comb = await _comb()
@@ -235,6 +238,7 @@ async def analyze(
             manual_offset=manual_offset,
             comb=comb,
             roll="after" if roll == "after" else "before",
+            rev_seconds=max(5.0, min(60.0, rev_seconds)),
         )
     except Exception as e:
         logging.exception("analysis failed")
@@ -245,6 +249,38 @@ async def analyze(
             detail="No playable notes found in that part of the MIDI file.",
         )
     return rec
+
+
+@api_router.post("/autofit", response_model=Analysis)
+async def autofit(
+    file: UploadFile = File(...),
+    start: float = Form(0.0),
+    rev_seconds: float = Form(25.0),
+    auto_transpose: bool = Form(True),
+    manual_offset: int = Form(0),
+    roll: str = Form("before"),
+    max_tries: int = Form(12000),
+):
+    """Re-map the MIDI slice up to max_tries ways (tempo ±35 %, start ±0.5 s) and keep the closest match."""
+    raw = await _read_midi(file)
+    comb = await _comb()
+    try:
+        rec = await run_in_threadpool(
+            fp.auto_fit, raw,
+            start=max(0.0, start),
+            rev_seconds=max(5.0, min(60.0, rev_seconds)),
+            comb=comb,
+            roll="after" if roll == "after" else "before",
+            auto_transpose=auto_transpose,
+            manual_offset=manual_offset,
+            max_tries=max(100, min(12000, max_tries)),
+        )
+    except Exception as e:
+        logging.exception("auto-fit failed")
+        raise HTTPException(status_code=422, detail=f"Could not read MIDI: {e}")
+    if rec["note_count"] == 0:
+        raise HTTPException(status_code=422, detail="No playable notes found in that part of the MIDI file.")
+    return fp._finish_analysis(rec, rec["fit"]["duration"], rec["fit"]["start"])
 
 
 async def _store(doc_id, filename, title, out, meta, title_b=None,

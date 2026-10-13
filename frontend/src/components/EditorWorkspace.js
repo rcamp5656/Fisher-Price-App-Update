@@ -164,7 +164,7 @@ export default function EditorWorkspace({
         </div>
       </div>
       {compare && a.partition_midi && (
-        <ComparePanel midi={a.partition_midi} disc={side.partition} revSeconds={revSeconds} />
+        <ComparePanel midi={a.partition_midi} disc={side.partition} revSeconds={revSeconds} events={a.events} offset={a.offset} duration={a.duration} fit={a.fit} />
       )}
 
       <div className="flex flex-wrap items-center gap-3 border-t-2 border-[#1D3557]/20 pt-3">

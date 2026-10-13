@@ -24,7 +24,7 @@ const emptyAnalysis = () => ({
 const DEFAULTS = {
   title: "", titleB: "", thickness: 3.0, duration: TOY_REV_SECONDS, autoTranspose: true,
   manualOffset: 0, twoSided: false, sideMode: "continue", engrave: true, recordNo: "", nextNo: null,
-  pinRadius: 0.8, roll: "before",
+  pinRadius: 0.8, roll: "before", autoFit: true,
 };
 
 export default function Creator() {
@@ -97,7 +97,7 @@ export default function Creator() {
     if (skipStale.current) { skipStale.current = false; return; }
     if (analysis) setStale(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files.a, files.b, starts.a, starts.b, s.duration, s.autoTranspose, s.manualOffset, s.twoSided, s.sideMode, s.roll, combVersion]);
+  }, [files.a, files.b, starts.a, starts.b, s.duration, s.autoTranspose, s.manualOffset, s.twoSided, s.sideMode, s.roll, s.autoFit, combVersion]);
 
   const scanFile = async (key, f) => {
     const form = new FormData();
@@ -114,21 +114,24 @@ export default function Creator() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.title, s.twoSided, s.sideMode]);
 
-  const analyzeSide = async (file, start) => {
+  const analyzeSide = async (file, start, duration = s.duration, fit = false) => {
     const form = new FormData();
     form.append("file", file);
-    form.append("duration", String(s.duration));
+    form.append("duration", String(duration));
     form.append("start", String(start));
     form.append("auto_transpose", String(s.autoTranspose));
     form.append("manual_offset", String(s.manualOffset));
     form.append("roll", s.roll);
-    const { data } = await axios.post(`${API}/analyze`, form);
+    form.append("rev_seconds", String(revSeconds));
+    const { data } = await axios.post(`${API}/${fit ? "autofit" : "analyze"}`, form);
     return data;
   };
 
   // moving the window re-reads the notes from that spot automatically
   const analyzeRef = useRef(null);
+  const fitStart = useRef(null);
   useEffect(() => {
+    if (fitStart.current !== null && starts.a === fitStart.current) { fitStart.current = null; return undefined; }
     if (!analysis || !files.a) return undefined;
     const t = setTimeout(() => analyzeRef.current && analyzeRef.current(), 500);
     return () => clearTimeout(t);
@@ -149,18 +152,25 @@ export default function Creator() {
     if (!canAnalyze) return;
     setBusy("analyze"); setError(null); setNotice(null);
     try {
-      const a = await analyzeSide(files.a, starts.a);
+      const a = await analyzeSide(files.a, starts.a, s.duration, s.autoFit);
+      const dur = s.autoFit ? a.fit.duration : s.duration;
+      const startA = s.autoFit ? a.fit.start : starts.a;
       let b = null;
       if (s.twoSided) {
         try {
-          b = s.sideMode === "file" ? await analyzeSide(files.b, starts.b) : await analyzeSide(files.a, starts.a + s.duration);
+          b = s.sideMode === "file" ? await analyzeSide(files.b, starts.b, dur) : await analyzeSide(files.a, startA + dur, dur);
         } catch (e) {
           if (e?.response?.status !== 422) throw e;
           b = emptyAnalysis();
-          setNotice(`Side B is blank — no notes found ${s.sideMode === "file" ? "in that file" : `between ${(starts.a + s.duration).toFixed(0)}s and ${(starts.a + s.duration * 2).toFixed(0)}s`}. You can draw notes by hand.`);
+          setNotice(`Side B is blank — no notes found ${s.sideMode === "file" ? "in that file" : `between ${(startA + dur).toFixed(0)}s and ${(startA + dur * 2).toFixed(0)}s`}. You can draw notes by hand.`);
         }
       }
       skipStale.current = false;
+      if (s.autoFit && (dur !== s.duration || startA !== starts.a)) {
+        skipStale.current = true;
+        if (startA !== starts.a) { fitStart.current = startA; setStarts((p) => ({ ...p, a: startA })); }
+        if (dur !== s.duration) set({ duration: dur });
+      }
       applyAnalysis(a, b);
     } catch (e) {
       setError(e?.response?.data?.detail || "Could not read that MIDI file.");
@@ -342,7 +352,7 @@ export default function Creator() {
             <h2 className="font-sans font-black text-xl tracking-tight flex items-center gap-2">
               <Wand2 className="h-5 w-5" /> 2 · SETTINGS
             </h2>
-            <SettingsPanel s={s} set={set} revSeconds={revSeconds} numStart={numStart} onNumStart={saveNumStart} />
+            <SettingsPanel s={s} set={set} revSeconds={revSeconds} numStart={numStart} onNumStart={saveNumStart} fit={analysis?.a?.fit} />
             <CombEditor onChanged={() => { setAnalysis(null); setResult(null); setParts({ a: null, b: null }); setCombVersion((v) => v + 1); }} />
           </div>
 

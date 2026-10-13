@@ -1,5 +1,5 @@
 import React from "react";
-import { Wand2, Ruler, Clock, Tag, Disc3, Gauge, Hash, Layers } from "lucide-react";
+import { Wand2, Ruler, Clock, Tag, Disc3, Gauge, Hash, Layers, Target } from "lucide-react";
 import { speedPct } from "../lib/fp";
 
 export function Toggle({ checked, onChange, testId }) {
@@ -32,7 +32,7 @@ function Row({ icon: Icon, label, value, testId }) {
   );
 }
 
-export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart }) {
+export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart, fit }) {
   const pct = speedPct(s.duration, revSeconds);
   return (
     <div className="flex flex-col gap-4">
@@ -142,11 +142,31 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
       </div>
 
       <div>
-        <Row icon={Clock} label="Window: 86 beats" value={`${s.duration}s of song`} testId="duration-value" />
+        <div className="flex items-center justify-between">
+          <label className="font-mono text-sm flex items-center gap-2"><Target className="h-4 w-4" /> Auto-fit to the MIDI</label>
+          <Toggle checked={s.autoFit} onChange={(v) => set({ autoFit: v })} testId="autofit-toggle" />
+        </div>
+        <p className="font-mono text-[10px] text-[#457B9D] mt-1" data-testid="autofit-hint">
+          {s.autoFit
+            ? "Re-maps the slice up to 12,000 ways (tempo ±35 %, start ±0.5 s), compares each disc with the MIDI and keeps the closest match."
+            : "Off — the window length and start are used exactly as set below."}
+        </p>
+        {s.autoFit && fit && (
+          <div className="mt-2 border-2 border-[#1D3557] rounded-md bg-[#2A9D8F]/15 p-2 font-mono text-[11px] text-[#1D3557]" data-testid="autofit-result">
+            <span className="font-sans font-black text-sm" data-testid="autofit-score">{Math.round(fit.score)}% match</span>
+            {fit.tries ? ` after ${fit.tries.toLocaleString()} tries` : ""} · {fit.matched} notes matched
+            · ±{Math.round(fit.timing_ms)} ms timing · tempo ×{Number(fit.tempo).toFixed(2)}
+            {fit.nudge ? ` · start nudged ${fit.nudge > 0 ? "+" : ""}${fit.nudge.toFixed(2)}s` : ""}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <Row icon={Clock} label="Window: 86 beats" value={`${Number(s.duration).toFixed(1)}s of song`} testId="duration-value" />
         <input
-          type="range" min="5" max="45" step="1" value={s.duration}
+          type="range" min="5" max="45" step="0.1" value={s.duration}
           data-testid="duration-slider"
-          onChange={(e) => set({ duration: Number(e.target.value) })}
+          onChange={(e) => set({ duration: Number(e.target.value), autoFit: false })}
           className="w-full mt-2 accent-[#457B9D]"
         />
         <div className="flex items-center justify-between gap-2 mt-1">
@@ -157,7 +177,7 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
           {pct !== 100 && (
             <button
               type="button" data-testid="match-speed-button"
-              onClick={() => set({ duration: revSeconds })}
+              onClick={() => set({ duration: revSeconds, autoFit: false })}
               className="font-mono text-[10px] font-bold px-2 py-1 rounded border-2 border-[#1D3557] bg-[#E9C46A] hover:bg-[#2A9D8F] hover:text-white flex items-center gap-1 whitespace-nowrap"
             >
               <Gauge className="h-3 w-3" /> match toy
