@@ -8,10 +8,11 @@ printable STL for the vintage 1977 Fisher-Price Music Box Record Player.
 The physical record is a flat disc with raised bumps ("pins") arranged in
 concentric tracks. As the disc rotates, the pins pluck the music box tines.
 """
+import bisect
 import math
 import io
 import re
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 import numpy as np
 import trimesh
@@ -89,20 +90,132 @@ def note_name(midi: int) -> str:
 # ---------------------------------------------------------------------------
 # MIDI -> note events
 # ---------------------------------------------------------------------------
-def parse_midi_events(midi_bytes: bytes, duration: float,
-                      start: float = 0.0) -> List[Tuple[float, int]]:
-    """Return [(time_seconds, midi_note)] for note-on events in the window
-    [start, start + duration), times relative to `start`."""
+GM_NAMES = (
+    "Grand Piano,Bright Piano,Electric Grand,Honky-tonk Piano,Electric Piano 1,Electric Piano 2,Harpsichord,Clavinet,"
+    "Celesta,Glockenspiel,Music Box,Vibraphone,Marimba,Xylophone,Tubular Bells,Dulcimer,"
+    "Drawbar Organ,Percussive Organ,Rock Organ,Church Organ,Reed Organ,Accordion,Harmonica,Tango Accordion,"
+    "Nylon Guitar,Steel Guitar,Jazz Guitar,Clean Guitar,Muted Guitar,Overdriven Guitar,Distortion Guitar,Guitar Harmonics,"
+    "Acoustic Bass,Finger Bass,Pick Bass,Fretless Bass,Slap Bass 1,Slap Bass 2,Synth Bass 1,Synth Bass 2,"
+    "Violin,Viola,Cello,Contrabass,Tremolo Strings,Pizzicato Strings,Harp,Timpani,"
+    "String Ensemble 1,String Ensemble 2,Synth Strings 1,Synth Strings 2,Choir Aahs,Voice Oohs,Synth Voice,Orchestra Hit,"
+    "Trumpet,Trombone,Tuba,Muted Trumpet,French Horn,Brass Section,Synth Brass 1,Synth Brass 2,"
+    "Soprano Sax,Alto Sax,Tenor Sax,Baritone Sax,Oboe,English Horn,Bassoon,Clarinet,"
+    "Piccolo,Flute,Recorder,Pan Flute,Blown Bottle,Shakuhachi,Whistle,Ocarina,"
+    "Square Lead,Sawtooth Lead,Calliope Lead,Chiff Lead,Charang Lead,Voice Lead,Fifths Lead,Bass + Lead,"
+    "New Age Pad,Warm Pad,Polysynth Pad,Choir Pad,Bowed Pad,Metallic Pad,Halo Pad,Sweep Pad,"
+    "Rain,Soundtrack,Crystal,Atmosphere,Brightness,Goblins,Echoes,Sci-Fi,"
+    "Sitar,Banjo,Shamisen,Koto,Kalimba,Bagpipe,Fiddle,Shanai,"
+    "Tinkle Bell,Agogo,Steel Drums,Woodblock,Taiko Drum,Melodic Tom,Synth Drum,Reverse Cymbal,"
+    "Guitar Fret Noise,Breath Noise,Seashore,Bird Tweet,Telephone,Helicopter,Applause,Gunshot"
+).split(",")
+DRUM_CHANNEL = 9
+
+
+def _all_note_events(midi_bytes: bytes) -> List[Tuple[float, int, int, int]]:
+    """Every note-on as (seconds, note, channel, track index), honouring the
+    tempo map shared by all tracks."""
     import mido
     mid = mido.MidiFile(file=io.BytesIO(midi_bytes))
-    events: List[Tuple[float, int]] = []
-    t = 0.0
-    for msg in mid:
-        t += msg.time
-        if t >= start + duration:
-            break
-        if msg.type == "note_on" and msg.velocity > 0 and t >= start:
-            events.append((t - start, msg.note))
+    tempos = []
+    for tr in mid.tracks:
+        tick = 0
+        for msg in tr:
+            tick += msg.time
+            if msg.type == "set_tempo":
+                tempos.append((tick, msg.tempo))
+    tempos.sort()
+    if not tempos or tempos[0][0] > 0:
+        tempos.insert(0, (0, 500000))
+    # cumulative seconds at each tempo change
+    marks = [(0, 0.0, tempos[0][1])]
+    for tick, tempo in tempos[1:]:
+        ptick, psec, ptempo = marks[-1]
+        marks.append((tick, psec + mido.tick2second(tick - ptick, mid.ticks_per_beat, ptempo), tempo))
+
+    def to_sec(tick: int) -> float:
+        k = bisect.bisect_right(marks, (tick, float("inf"), 0)) - 1
+        mtick, msec, mtempo = marks[k]
+        return msec + mido.tick2second(tick - mtick, mid.ticks_per_beat, mtempo)
+
+    out = []
+    for ti, tr in enumerate(mid.tracks):
+        tick = 0
+        for msg in tr:
+            tick += msg.time
+            if msg.type == "note_on" and msg.velocity > 0:
+                out.append((to_sec(tick), msg.note, msg.channel, ti))
+    out.sort()
+    return out
+
+
+def scan_tracks(midi_bytes: bytes) -> Dict:
+    """Per-track summary for the track picker plus the most melody-like track."""
+    import mido
+    mid = mido.MidiFile(file=io.BytesIO(midi_bytes))
+    events = _all_note_events(midi_bytes)
+    total = max((t for t, *_ in events), default=0.0)
+    tracks = []
+    for ti, tr in enumerate(mid.tracks):
+        ev = [e for e in events if e[3] == ti]
+        if not ev:
+            continue
+        progs = [m.program for m in tr if m.type == "program_change"]
+        chans = {c for _, _, c, _ in ev}
+        drums = chans == {DRUM_CHANNEL}
+        onsets = sorted({round(t, 2) for t, *_ in ev})
+        span = (onsets[-1] - onsets[0]) if len(onsets) > 1 else 0.0
+        poly = len(ev) / len(onsets)
+        density = len(onsets) / max(span, 1.0)
+        notes = [n for _, n, _, _ in ev]
+        mean = sum(notes) / len(notes)
+        # melody-likeness: monophonic, singable register, ~1-4 notes/s, lasts most of the song
+        score = 0.0
+        if not drums:
+            score += 30 * max(0.0, 1 - (poly - 1) * 2)
+            score += 25 * max(0.0, 1 - abs(mean - 69) / 24)
+            score += 25 * (1 - min(1.0, abs(math.log2(max(density, 0.05) / 2.0)) / 2.5))
+            score += 20 * min(1.0, span / max(total, 1.0))
+        step = max(1, len(ev) // 300)
+        tracks.append({
+            "index": ti,
+            "name": tr.name or "",
+            "instrument": "Drums" if drums else (GM_NAMES[progs[0]] if progs and 0 <= progs[0] < 128 else "Unknown"),
+            "program": progs[0] if progs else None,
+            "channels": sorted(chans),
+            "drums": drums,
+            "notes": len(ev),
+            "onsets": len(onsets),
+            "poly": round(poly, 2),
+            "density": round(density, 2),
+            "low": min(notes),
+            "high": max(notes),
+            "first": round(onsets[0], 2),
+            "span": round(span, 1),
+            "melody_score": round(score, 1),
+            "strip": [[round(t, 2), n] for t, n, _, _ in ev[::step]],
+        })
+    melodic = [t for t in tracks if not t["drums"]]
+    suggested = max(melodic, key=lambda t: t["melody_score"])["index"] if melodic else None
+    return {"tracks": tracks, "suggested": suggested, "total": round(total, 2),
+            "events": [[round(t, 3), n, ti] for t, n, c, ti in events if c != DRUM_CHANNEL]}
+
+
+def parse_midi_events(midi_bytes: bytes, duration: float,
+                      start: float = 0.0, tracks: Optional[List[int]] = None,
+                      skyline: bool = False) -> List[Tuple[float, int]]:
+    """Note-ons inside [start, start+duration) from the chosen tracks (all
+    pitched tracks when None). Drums (channel 10) are never pitched notes on
+    the toy and are skipped. `skyline` keeps only the top note of each chord."""
+    sel = set(tracks) if tracks else None
+    events = [(t - start, n) for t, n, c, ti in _all_note_events(midi_bytes)
+              if c != DRUM_CHANNEL and start <= t < start + duration and (sel is None or ti in sel)]
+    if skyline and events:
+        top: Dict[int, Tuple[float, int]] = {}
+        for t, n in events:
+            key = int(round(t * 20))  # 50 ms buckets
+            if key not in top or n > top[key][1]:
+                top[key] = (t, n)
+        events = sorted(top.values())
     return events
 
 
@@ -257,7 +370,7 @@ def compare_fit(events: List[Tuple[float, int]], offset: int, partition: List[Li
 def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
              comb: Comb = DEFAULT_COMB, roll: str = "before", auto_transpose: bool = True,
              manual_offset: int = 0, max_tries: int = 12000, tempo_range: float = 0.35,
-             nudge: float = 0.5) -> Dict:
+             nudge: float = 0.5, tracks: Optional[List[int]] = None, skyline: bool = False) -> Dict:
     """Re-map the MIDI slice onto the 86-beat disc up to `max_tries` ways —
     varying how many MIDI seconds fill one revolution (tempo within
     ±tempo_range) and a fine shift of the window start (±nudge s) — comparing
@@ -265,7 +378,7 @@ def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
     import numpy as np
     d_lo, d_hi = rev_seconds * (1 - tempo_range), rev_seconds * (1 + tempo_range)
     base = max(0.0, start - nudge)
-    all_events = parse_midi_events(midi_bytes, d_hi + 2 * nudge, base)
+    all_events = parse_midi_events(midi_bytes, d_hi + 2 * nudge, base, tracks, skyline)
     if not all_events:
         rec = events_to_record([], rev_seconds, auto_transpose, manual_offset, comb, roll=roll)
         rec["events"] = []
@@ -864,9 +977,10 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
 
 def analyze(midi_bytes: bytes, duration: float = 25.0, start: float = 0.0,
             auto_transpose: bool = True, manual_offset: int = 0,
-            comb: Comb = DEFAULT_COMB, roll: str = "before", rev_seconds: float = 25.0) -> Dict:
+            comb: Comb = DEFAULT_COMB, roll: str = "before", rev_seconds: float = 25.0,
+            tracks: Optional[List[int]] = None, skyline: bool = False) -> Dict:
     """MIDI window -> editable pitch x 86 partition plus mapping stats."""
-    events = parse_midi_events(midi_bytes, duration, start)
+    events = parse_midi_events(midi_bytes, duration, start, tracks, skyline)
     rec = events_to_record(events, duration, auto_transpose, manual_offset, comb, roll=roll)
     rec["events"] = [[round(t, 3), n] for t, n in sorted(events)]
     rec["fit"] = compare_fit(events, rec["offset"], rec["partition"], duration, rev_seconds, comb) if events else None

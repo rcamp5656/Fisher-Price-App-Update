@@ -4,13 +4,20 @@ import { INPUT, MAX_BEAT, midiToFreq, REAL_PITCH_OFFSET } from "../lib/fp";
 import { pluck, newCtx } from "../hooks/useMusicBox";
 
 // Whole-song pin map with a draggable capture window
-export default function SongOverview({ scan, duration, start, onStart, label, revSeconds = 25 }) {
+export default function SongOverview({ scan: rawScan, tracks, duration, start, onStart, label, revSeconds = 25 }) {
   const ref = useRef(null);
   const [playing, setPlaying] = useState(false);
   const ctxRef = useRef(null);
   const stopSel = () => { if (ctxRef.current) ctxRef.current.close(); ctxRef.current = null; setPlaying(false); };
   useEffect(() => stopSel, []);
   // raw MIDI preview of exactly what sits inside the window, at toy speed
+  // only the chosen tracks are shown and heard
+  const scan = useMemo(() => {
+    if (!tracks || !tracks.length) return rawScan;
+    const sel = new Set(tracks);
+    const events = rawScan.events.filter((e) => e.length < 3 || sel.has(e[2]));
+    return { ...rawScan, events: events.length ? events : rawScan.events };
+  }, [rawScan, tracks]);
   const playSel = () => {
     stopSel();
     const ctx = newCtx();

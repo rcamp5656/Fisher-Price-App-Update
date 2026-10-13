@@ -4,6 +4,8 @@ from starlette.concurrency import run_in_threadpool
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+import asyncio
+import math
 import os
 import base64
 import io
@@ -45,6 +47,11 @@ class ConversionSummary(BaseModel):
     toy_fixes: int = 0
     mesh_check: Optional[dict] = None
     roll: Optional[str] = None
+    tracks: Optional[List[int]] = None
+    skyline: bool = False
+    album_id: Optional[str] = None
+    album_index: Optional[int] = None
+    album_count: Optional[int] = None
     created_at: str
     note_count: int
     exact: int
@@ -99,6 +106,8 @@ class PressRequest(BaseModel):
     overrides: Optional[dict] = None
     overrides_b: Optional[dict] = None
     roll: str = Field("before", pattern="^(before|after)$")
+    tracks: Optional[List[int]] = None
+    skyline: bool = False
 
 
 class CombRequest(BaseModel):
@@ -205,16 +214,23 @@ async def root():
     return {"message": "Fisher-Price Music Box Record Creator API"}
 
 
+def _tracks(raw: str) -> Optional[List[int]]:
+    vals = [int(x) for x in raw.split(",") if x.strip().lstrip("-").isdigit()]
+    return vals or None
+
+
 @api_router.post("/scan")
 async def scan(file: UploadFile = File(...)):
-    """Whole-song overview: every note-on as [seconds, midi] plus total length."""
+    """Whole-song overview: every pitched note-on as [seconds, midi, track],
+    per-track summaries for the track picker and the suggested melody track."""
     raw = await _read_midi(file)
     try:
-        events = await run_in_threadpool(fp.parse_midi_events, raw, 3600.0, 0.0)
+        info = await run_in_threadpool(fp.scan_tracks, raw)
         total = await run_in_threadpool(fp.midi_length, raw)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Could not read MIDI: {e}")
-    return {"events": [[round(t, 3), n] for t, n in events], "total": round(total, 2)}
+    info["total"] = max(info["total"], total)
+    return info
 
 
 @api_router.post("/analyze", response_model=Analysis)
@@ -226,6 +242,8 @@ async def analyze(
     manual_offset: int = Form(0),
     roll: str = Form("before"),
     rev_seconds: float = Form(25.0),
+    tracks: str = Form(""),
+    skyline: bool = Form(False),
 ):
     raw = await _read_midi(file)
     comb = await _comb()
@@ -239,6 +257,8 @@ async def analyze(
             comb=comb,
             roll="after" if roll == "after" else "before",
             rev_seconds=max(5.0, min(60.0, rev_seconds)),
+            tracks=_tracks(tracks),
+            skyline=skyline,
         )
     except Exception as e:
         logging.exception("analysis failed")
@@ -260,6 +280,8 @@ async def autofit(
     manual_offset: int = Form(0),
     roll: str = Form("before"),
     max_tries: int = Form(12000),
+    tracks: str = Form(""),
+    skyline: bool = Form(False),
 ):
     """Re-map the MIDI slice up to max_tries ways (tempo ±35 %, start ±0.5 s) and keep the closest match."""
     raw = await _read_midi(file)
@@ -274,6 +296,8 @@ async def autofit(
             auto_transpose=auto_transpose,
             manual_offset=manual_offset,
             max_tries=max(100, min(12000, max_tries)),
+            tracks=_tracks(tracks),
+            skyline=skyline,
         )
     except Exception as e:
         logging.exception("auto-fit failed")
@@ -285,7 +309,7 @@ async def autofit(
 
 async def _store(doc_id, filename, title, out, meta, title_b=None,
                  partition=None, partition_b=None, record_no=None,
-                 overrides=None, overrides_b=None):
+                 overrides=None, overrides_b=None, extra=None):
     stats = out["stats"]
     doc = {
         "id": doc_id,
@@ -311,6 +335,7 @@ async def _store(doc_id, filename, title, out, meta, title_b=None,
         "toy_fixes": stats.get("toy_fixes", 0),
         "mesh_check": stats.get("mesh_check"),
         "roll": stats.get("roll", "before"),
+        **(extra or {}),
     }
     await db.conversions.insert_one(doc)
     for k in ("stl_b64", "stl_half_a_b64", "stl_half_b_b64", "fpr", "fpr_b", "scad", "_id"):
@@ -346,7 +371,175 @@ async def press(req: PressRequest):
     }
     return await _store(str(uuid.uuid4()), req.filename, req.title.strip(), out, meta,
                         title_b, req.partition, req.partition_b, record_no,
-                        req.overrides, req.overrides_b)
+                        req.overrides, req.overrides_b, {"tracks": req.tracks, "skyline": req.skyline})
+
+
+class AlbumDisc(BaseModel):
+    id: str
+    record_no: Optional[int] = None
+    title: str
+    title_b: Optional[str] = None
+    two_sided: bool = False
+    sides: List[int]
+    note_count: int = 0
+    mesh_ok: Optional[bool] = None
+
+
+class Album(BaseModel):
+    id: str
+    title: str
+    status: str
+    created_at: str
+    duration: float
+    start: float
+    offset: int = 0
+    total_sides: int
+    total_discs: int
+    done: int = 0
+    discs: List[AlbumDisc] = []
+    tracks: Optional[List[int]] = None
+    skyline: bool = False
+    two_sided: bool = True
+    fit: Optional[dict] = None
+    error: Optional[str] = None
+
+
+async def _build_album(album_id: str, raw: bytes, o: dict):
+    """Background: slice the whole song into 86-beat sides, press every disc."""
+    try:
+        comb = await _comb()
+        tracks, skyline = o["tracks"], o["skyline"]
+        allev = await run_in_threadpool(fp.parse_midi_events, raw, 36000.0, 0.0, tracks, skyline)
+        if not allev:
+            raise ValueError("No playable notes in the selected tracks")
+        first, last = allev[0][0], allev[-1][0]
+        start, duration = max(0.0, first - 0.2), o["duration"]
+        fit = None
+        if duration <= 0:
+            rec = await run_in_threadpool(fp.auto_fit, raw, start, o["rev_seconds"], comb, o["roll"],
+                                          o["auto_transpose"], o["manual_offset"], 12000, 0.35, 0.5, tracks, skyline)
+            fit, duration, start = rec["fit"], rec["fit"]["duration"], rec["fit"]["start"]
+        offset = (fp.choose_transposition([n for _, n in allev], comb) if o["auto_transpose"] else o["manual_offset"])
+        n_sides = max(1, math.ceil((last - start + 0.01) / duration))
+        per_disc = 2 if o["two_sided"] else 1
+        n_discs = math.ceil(n_sides / per_disc)
+        await db.albums.update_one({"id": album_id}, {"$set": {
+            "duration": duration, "start": start, "offset": offset, "fit": fit,
+            "total_sides": n_sides, "total_discs": n_discs}})
+        sides = []
+        for k in range(n_sides):
+            rec = await run_in_threadpool(fp.analyze, raw, duration, start + k * duration, False, offset,
+                                          comb, o["roll"], o["rev_seconds"], tracks, skyline)
+            sides.append(rec)
+        base = o["title"][:30]
+        for d in range(n_discs):
+            a = sides[d * per_disc]
+            b = sides[d * per_disc + 1] if per_disc == 2 and d * per_disc + 1 < n_sides else None
+            title = f"{base} {d + 1}/{n_discs}"
+            title_b = f"{base} {d + 1}/{n_discs} B" if b is not None else None
+            if b is None and per_disc == 2:
+                b = {"partition": [[False] * fp.MAX_BEAT for _ in range(comb.tones)], "note_count": 0}
+                title_b = f"{base} {d + 1}/{n_discs} B (blank)"
+            record_no = await _record_no(title)
+            out = await run_in_threadpool(
+                fp.press, a["partition"], title, o["thickness"],
+                b["partition"] if b else None, title_b or "", o["engrave"], record_no, comb,
+                None, None, o["pin_radius"], o["roll"])
+            meta = {"note_count": a["note_count"] + (b["note_count"] if b else 0),
+                    "exact": a.get("exact", 0), "adjusted": a.get("adjusted", 0), "merged": a.get("merged", 0),
+                    "offset": offset, "duration": duration}
+            doc = await _store(str(uuid.uuid4()), o["filename"], title, out, meta, title_b,
+                               a["partition"], b["partition"] if b else None, record_no, None, None,
+                               {"tracks": tracks, "skyline": skyline, "album_id": album_id,
+                                "album_index": d + 1, "album_count": n_discs})
+            disc = {"id": doc["id"], "record_no": record_no, "title": title, "title_b": title_b,
+                    "two_sided": b is not None, "sides": [d * per_disc + 1] + ([d * per_disc + 2] if b else []),
+                    "note_count": meta["note_count"], "mesh_ok": (doc.get("mesh_check") or {}).get("ok")}
+            await db.albums.update_one({"id": album_id}, {"$push": {"discs": disc}, "$inc": {"done": 1}})
+        await db.albums.update_one({"id": album_id}, {"$set": {"status": "done"}})
+    except Exception as e:
+        logging.exception("album failed")
+        await db.albums.update_one({"id": album_id}, {"$set": {"status": "error", "error": str(e)}})
+
+
+@api_router.post("/album", response_model=Album)
+async def make_album(
+    file: UploadFile = File(...),
+    title: str = Form("Album"),
+    tracks: str = Form(""),
+    skyline: bool = Form(False),
+    duration: float = Form(0.0),
+    rev_seconds: float = Form(25.0),
+    two_sided: bool = Form(True),
+    thickness: float = Form(5.0),
+    engrave: bool = Form(True),
+    pin_radius: float = Form(0.8),
+    roll: str = Form("before"),
+    auto_transpose: bool = Form(True),
+    manual_offset: int = Form(0),
+):
+    """Cut the whole song onto as many discs as it takes (duration 0 = auto-fit the tempo)."""
+    raw = await _read_midi(file)
+    two = bool(two_sided)
+    o = {
+        "title": (title or Path(file.filename).stem or "Album").strip()[:30] or "Album",
+        "filename": file.filename, "tracks": _tracks(tracks), "skyline": bool(skyline),
+        "duration": duration if duration <= 0 else max(5.0, min(60.0, duration)),
+        "rev_seconds": max(5.0, min(60.0, rev_seconds)), "two_sided": two,
+        "thickness": max(4.5 if two else 1.5, min(8.0, thickness)), "engrave": bool(engrave),
+        "pin_radius": max(0.4, min(1.0, pin_radius)), "roll": "after" if roll == "after" else "before",
+        "auto_transpose": bool(auto_transpose), "manual_offset": manual_offset,
+    }
+    doc = {"id": str(uuid.uuid4()), "title": o["title"], "status": "running",
+           "created_at": datetime.now(timezone.utc).isoformat(), "duration": o["duration"] or 0.0,
+           "start": 0.0, "offset": 0, "total_sides": 0, "total_discs": 0, "done": 0, "discs": [],
+           "tracks": o["tracks"], "skyline": o["skyline"], "two_sided": two, "fit": None, "error": None}
+    await db.albums.insert_one(dict(doc))
+    asyncio.create_task(_build_album(doc["id"], raw, o))
+    return doc
+
+
+@api_router.get("/album/{album_id}", response_model=Album)
+async def get_album(album_id: str):
+    doc = await db.albums.find_one({"id": album_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Album not found")
+    return doc
+
+
+@api_router.get("/album/{album_id}/zip")
+async def album_zip(album_id: str):
+    album = await db.albums.find_one({"id": album_id}, {"_id": 0})
+    if not album:
+        raise HTTPException(404, "Album not found")
+    name = re.sub(r"[^A-Za-z0-9_-]+", "_", album["title"]).strip("_") or "album"
+    buf = io.BytesIO()
+    lines = [f"{album['title']} — Fisher-Price record album", "=" * 50,
+             f"{album['total_discs']} disc(s), {album['total_sides']} side(s) · {album['duration']:.2f} s of song per side · "
+             f"transposed {album.get('offset', 0):+d} semitones · tracks {album.get('tracks') or 'all'}"
+             f"{' · skyline (top note of chords)' if album.get('skyline') else ''}", "",
+             "Play order:"]
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for disc in album.get("discs", []):
+            doc = await db.conversions.find_one({"id": disc["id"]})
+            if not doc:
+                continue
+            stem = f"{name}-{disc['sides'][0]:02d}" + (f"-{disc['sides'][1]:02d}" if len(disc["sides"]) > 1 else "")
+            z.writestr(f"{stem}.stl", base64.b64decode(doc["stl_b64"]))
+            if doc.get("stl_half_a_b64"):
+                z.writestr(f"halves/{stem}-half-A.stl", base64.b64decode(doc["stl_half_a_b64"]))
+                z.writestr(f"halves/{stem}-half-B.stl", base64.b64decode(doc["stl_half_b_b64"]))
+            z.writestr(f"scad/{stem}.scad", doc["scad"])
+            z.writestr(f"fpr/{stem}.fpr", doc["fpr"])
+            if doc.get("fpr_b"):
+                z.writestr(f"fpr/{stem}-B.fpr", doc["fpr_b"])
+            z.writestr(f"mesh-check/{stem}.txt", _mesh_report(doc))
+            side_txt = f"side {disc['sides'][0]}" + (f" (A) / side {disc['sides'][1]} (B)" if len(disc["sides"]) > 1 else "")
+            lines.append(f"  Record #{disc.get('record_no') or '-'}  {stem}.stl  —  {side_txt}  —  {disc['note_count']} pins")
+        lines += ["", "Each side is one revolution (86 beats). Flip two-sided discs to continue; load the next disc for the next part."]
+        z.writestr("README.txt", "\n".join(lines) + "\n")
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{name}-album.zip"'})
 
 
 @api_router.post("/convert", response_model=ConversionSummary)
