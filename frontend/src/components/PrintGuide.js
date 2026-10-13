@@ -6,7 +6,7 @@ const SECTIONS = [
   {
     icon: Layers, title: "Layer height & nozzle",
     tips: [
-      "0.10–0.12 mm layers (pins are only 1.2 mm tall × 1 mm wide — coarse layers round them off).",
+      "0.10–0.12 mm layers (cams are only 1.2 mm tall — coarse layers soften the release edge that makes the note).",
       "Standard 0.4 mm nozzle is fine; 0.25 mm gives crisper pin edges.",
       "Slow the outer walls to ~30–40 mm/s so the 1 mm pins don't smear.",
     ],
@@ -34,7 +34,7 @@ const SECTIONS = [
       "3–4 perimeters, 40 %+ infill (or 100 % — the disc is thin anyway).",
       "Turn off elephant's-foot compensation if the disc won't drop onto the spindle, or ream the 6.4 mm hole lightly.",
       "Two-sided: 5 mm total (two 2.5 mm halves). Never use supports — nothing on the disc needs them.",
-      "Pin bumps below 0.45 mm radius are thinner than a 0.4 mm line: enable Arachne/variable line width, or use a 0.25 mm nozzle or resin.",
+      "Pins are 2.4 mm ramped cams with a 0.9 mm throw — a 0.4 mm nozzle handles them; enable Arachne/variable line width for the thin end of the ramp.",
     ],
   },
   {

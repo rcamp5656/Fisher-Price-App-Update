@@ -149,17 +149,17 @@ export default function SettingsPanel({ s, set, revSeconds }) {
       </div>
 
       <div>
-        <Row icon={Ruler} label="Pin bump radius" value={`${s.pinRadius.toFixed(2)}mm`} testId="pin-radius-value" />
+        <Row icon={Ruler} label="Pin cam depth" value={`${s.pinRadius.toFixed(2)}mm`} testId="pin-radius-value" />
         <input
-          type="range" min="0.25" max="0.9" step="0.05" value={s.pinRadius}
+          type="range" min="0.4" max="1.0" step="0.05" value={s.pinRadius}
           data-testid="pin-radius-slider"
           onChange={(e) => set({ pinRadius: Number(e.target.value) })}
           className="w-full mt-2 accent-[#E63946]"
         />
-        <p className={`font-mono text-[10px] mt-1 ${s.pinRadius < 0.45 ? "text-[#E63946] font-bold" : "text-[#457B9D]"}`} data-testid="pin-radius-hint">
-          {s.pinRadius < 0.45
-            ? `Bump sticks out ${s.pinRadius.toFixed(2)} mm — less than a 0.4 mm nozzle line. Use a 0.25 mm nozzle or resin, or go ≥ 0.45 mm.`
-            : "Bump protrudes into the 2 mm groove by this much; 0.5 mm prints reliably on a 0.4 mm nozzle."}
+        <p className={`font-mono text-[10px] mt-1 ${s.pinRadius < 0.6 ? "text-[#E63946] font-bold" : "text-[#457B9D]"}`} data-testid="pin-radius-hint">
+          {s.pinRadius < 0.6
+            ? "Shallow cam — the tine may not be pushed far enough to ring. Originals push ~0.7–1.0 mm."
+            : "Ramped cam (2.4 mm long) pushes the tine sideways by this much into the 2 mm groove, then releases it at the beat. Originals ≈ 0.7–1.0 mm."}
         </p>
       </div>
     </div>

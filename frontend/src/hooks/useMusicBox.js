@@ -63,6 +63,9 @@ export function useMusicBox(sequence, revSeconds, loop) {
     setSideIdx(0);
   }, []);
 
+  // playback jumps to the first used beat of each side and stops after the last one
+  const layoutRef = useRef([]);
+
   const play = useCallback(() => {
     clearTimers();
     if (ctxRef.current) ctxRef.current.close();
@@ -73,36 +76,49 @@ export function useMusicBox(sequence, revSeconds, loop) {
     master.connect(ctx.destination);
     const t0 = ctx.currentTime + 0.1;
     const beatSec = revSeconds / MAX_BEAT;
-    const sideLen = revSeconds + SIDE_GAP;
     startRef.current = t0;
     revRef.current = revSeconds;
+    let cursor = 0;
+    const layout = sequence.map((partition) => {
+      const beats = [];
+      partition.forEach((row) => row.forEach((on, b) => { if (on) beats.push(b); }));
+      const first = beats.length ? Math.min(...beats) : 0;
+      const last = beats.length ? Math.max(...beats) : 0;
+      const len = (last - first + 1) * beatSec + 1.2;
+      const entry = { first, start: cursor, len };
+      cursor += len + SIDE_GAP;
+      return entry;
+    });
+    layoutRef.current = layout;
     sequence.forEach((partition, i) => {
-      const base = t0 + i * sideLen;
+      const { first, start } = layout[i];
       partition.forEach((row, tone) =>
         row.forEach((on, beat) => {
-          if (on) pluck(ctx, master, midiToFreq(NOTES[tone] + REAL_PITCH_OFFSET), base + beat * beatSec);
+          if (on) pluck(ctx, master, midiToFreq(NOTES[tone] + REAL_PITCH_OFFSET), t0 + start + (beat - first) * beatSec);
         })
       );
-      if (i > 0) timersRef.current.push(setTimeout(() => setSideIdx(i), (i * sideLen + 0.1) * 1000));
+      if (i > 0) timersRef.current.push(setTimeout(() => setSideIdx(i), (start + 0.1) * 1000));
     });
     setPlaying(true);
     setSideIdx(0);
-    const total = (sequence.length * sideLen + 0.1) * 1000;
     timersRef.current.push(setTimeout(() => {
       if (loopRef.current) playRef.current();
       else stop();
-    }, total));
+    }, (cursor + 0.1) * 1000));
   }, [sequence, revSeconds, stop]);
   playRef.current = play;
 
   // {side, beat} of the playhead, or null when idle
   const getPos = useCallback(() => {
     const ctx = ctxRef.current;
-    if (!ctx) return null;
+    const layout = layoutRef.current;
+    if (!ctx || !layout.length) return null;
     const el = ctx.currentTime - startRef.current;
-    const sideLen = revRef.current + SIDE_GAP;
-    const side = Math.floor(el / sideLen);
-    return { side, beat: ((el - side * sideLen) / revRef.current) * MAX_BEAT };
+    const beatSec = revRef.current / MAX_BEAT;
+    let side = layout.findIndex((l) => el < l.start + l.len + SIDE_GAP);
+    if (side < 0) side = layout.length - 1;
+    const l = layout[side];
+    return { side, beat: l.first + (el - l.start) / beatSec };
   }, []);
 
   const tap = useCallback((tone) => {

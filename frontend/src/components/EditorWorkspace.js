@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Play, Square, RotateCcw, Gauge, AlertTriangle, Repeat, Shuffle } from "lucide-react";
+import { Play, Square, RotateCcw, Gauge, AlertTriangle, Repeat, Shuffle, FileMusic } from "lucide-react";
 import NoteEditor from "./NoteEditor";
 import TrackView from "./TrackView";
 import { useMusicBox } from "../hooks/useMusicBox";
-import { countNotes, speedPct, repeatConflicts, chordConflicts, staggerPartition, BTN_LIFT } from "../lib/fp";
+import { countNotes, speedPct, grooveConflicts, chordConflicts, makePlayable, BTN_LIFT } from "../lib/fp";
 
 function Stat({ label, value, warn, testId }) {
   return (
@@ -23,7 +23,7 @@ export default function EditorWorkspace({
   const { playing, sideIdx, play, stop, getPos, tap } = useMusicBox(sequence, revSeconds, loop);
   const a = side.analysis;
   const pct = speedPct(duration, revSeconds);
-  const repeats = useMemo(() => repeatConflicts(side.partition), [side.partition]);
+  const repeats = useMemo(() => grooveConflicts(side.partition), [side.partition]);
   const chords = useMemo(() => chordConflicts(side.partition), [side.partition]);
   const conflicts = useMemo(() => new Set([...repeats, ...chords]), [repeats, chords]);
   const clashCount = repeats.size;
@@ -71,13 +71,26 @@ export default function EditorWorkspace({
           <Stat label="On-pitch" value={a.exact} />
           <Stat label="Snapped" value={a.adjusted} warn={a.adjusted > 0} />
           <Stat label="Merged" value={a.merged} warn={a.merged > 0} />
-          <Stat label="Repeats" value={clashCount} warn={clashCount > 0} testId="stat-repeats" />
+          <Stat label="Too close" value={clashCount} warn={clashCount > 0} testId="stat-repeats" />
           <Stat label="Chords" value={chordCount} warn={chordCount > 0} testId="stat-chords" />
           {a.staggered > 0 && <Stat label="Staggered" value={a.staggered} testId="stat-staggered" />}
+          {a.dropped > 0 && <Stat label="Dropped" value={a.dropped} warn testId="stat-dropped" />}
           <Stat label="Transpose" value={`${a.offset >= 0 ? "+" : ""}${a.offset}`} />
         </div>
       </div>
 
+      {a.dropped > 0 && (
+        <p data-testid="dropped-notice" className="font-mono text-[11px] text-[#1D3557] bg-white border-2 border-[#1D3557] rounded-md px-2 py-1 flex items-center gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          {a.dropped} MIDI note(s) were dropped to fit the toy (cams in one groove need ≥ 2 beats of spacing). The MIDI capture is kept —
+          {a.partition_midi && (
+            <button type="button" data-testid="load-midi-raw-button" onClick={() => side.onChange(a.partition_midi)}
+              className="font-sans font-black text-[11px] px-2 py-0.5 rounded border-2 border-[#1D3557] bg-[#E9C46A] flex items-center gap-1 whitespace-nowrap">
+              <FileMusic className="h-3 w-3" /> SHOW MIDI VERSION
+            </button>
+          )}
+        </p>
+      )}
       {a.merged > 0 && (
         <p data-testid="merged-warning" className="font-mono text-[11px] text-[#1D3557] bg-[#FFB703] border-2 border-[#1D3557] rounded-md px-2 py-1 flex items-center gap-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -88,16 +101,20 @@ export default function EditorWorkspace({
         <p data-testid="chord-warning" className="font-mono text-[11px] text-[#1D3557] bg-[#FFB703] border-2 border-[#E63946] rounded-md px-2 py-1 flex items-center gap-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#E63946]" />
           {chordCount} highlighted note(s) share a beat with another note — the player plucks one tine at a time, so they must be offset (the originals always stagger them).
-          <button type="button" data-testid="auto-stagger-button" onClick={() => side.onChange(staggerPartition(side.partition))}
+          <button type="button" data-testid="auto-stagger-button" onClick={() => side.onChange(makePlayable(side.partition))}
             className="ml-auto font-sans font-black text-[11px] px-2 py-0.5 rounded border-2 border-[#1D3557] bg-[#1D3557] text-white flex items-center gap-1 whitespace-nowrap">
-            <Shuffle className="h-3 w-3" /> AUTO-STAGGER
+            <Shuffle className="h-3 w-3" /> MAKE PLAYABLE
           </button>
         </p>
       )}
       {clashCount > 0 && (
         <p data-testid="repeat-warning" className="font-mono text-[11px] text-[#1D3557] bg-[#FFB703] border-2 border-[#E63946] rounded-md px-2 py-1 flex items-center gap-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#E63946]" />
-          {clashCount} highlighted note(s) ask a single tine to strike on back-to-back beats — the tine is still ringing, so the second note may go silent. Nudge one note or drop it.
+          {clashCount} highlighted note(s) are too close in the same groove — cams need ≥ 2 beats between them (a 2.4 mm cam is longer than one beat at the inner tracks) or they overlap and jam the tines.
+          <button type="button" data-testid="make-playable-button" onClick={() => side.onChange(makePlayable(side.partition))}
+            className="ml-auto font-sans font-black text-[11px] px-2 py-0.5 rounded border-2 border-[#1D3557] bg-[#1D3557] text-white flex items-center gap-1 whitespace-nowrap">
+            <Shuffle className="h-3 w-3" /> MAKE PLAYABLE
+          </button>
         </p>
       )}
 

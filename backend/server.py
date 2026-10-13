@@ -67,6 +67,8 @@ class Analysis(BaseModel):
     adjusted: int
     merged: int
     staggered: int = 0
+    dropped: int = 0
+    partition_midi: Optional[Partition] = None
     note_count: int
     notes_used: List[dict]
     duration: float
@@ -88,7 +90,7 @@ class PressRequest(BaseModel):
     adjusted: int = 0
     merged: int = 0
     record_no: Optional[int] = Field(None, ge=1, le=999)
-    pin_radius: float = Field(0.35, ge=0.25, le=0.9)
+    pin_radius: float = Field(0.9, ge=0.4, le=1.0)
     overrides: Optional[dict] = None
     overrides_b: Optional[dict] = None
 
