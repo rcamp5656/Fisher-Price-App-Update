@@ -42,6 +42,7 @@ class ConversionSummary(BaseModel):
     two_sided: bool = False
     record_no: Optional[int] = None
     pin_radius: Optional[float] = None
+    toy_fixes: int = 0
     created_at: str
     note_count: int
     exact: int
@@ -90,7 +91,7 @@ class PressRequest(BaseModel):
     adjusted: int = 0
     merged: int = 0
     record_no: Optional[int] = Field(None, ge=1, le=999)
-    pin_radius: float = Field(0.9, ge=0.4, le=1.0)
+    pin_radius: float = Field(0.8, ge=0.4, le=1.0)
     overrides: Optional[dict] = None
     overrides_b: Optional[dict] = None
 
@@ -266,6 +267,7 @@ async def _store(doc_id, filename, title, out, meta, title_b=None,
         **{k: stats[k] for k in ("pin_count", "thickness", "beats", "triangles",
                                  "notes_used", "two_sided")},
         "pin_radius": stats.get("pin_radius"),
+        "toy_fixes": stats.get("toy_fixes", 0),
     }
     await db.conversions.insert_one(doc)
     for k in ("stl_b64", "stl_half_a_b64", "stl_half_b_b64", "fpr", "fpr_b", "scad", "_id"):

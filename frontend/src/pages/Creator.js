@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
-  Disc3, Music4, Wand2, AlertTriangle, Loader2, Grid3X3, Box, ListMusic,
+  Disc3, Music4, Wand2, AlertTriangle, Loader2, Grid3X3, Box, ListMusic, Eraser,
 } from "lucide-react";
 import RecordViewer from "../components/RecordViewer";
 import UploadZone from "../components/UploadZone";
@@ -57,6 +57,15 @@ export default function Creator() {
 
   const set = (patch) => setS((p) => ({ ...p, ...patch }));
 
+  // wipe everything for a fresh record (keeps printer settings and numbering)
+  const resetAll = () => {
+    setFiles({ a: null, b: null }); setScans({ a: null, b: null }); setStarts({ a: 0, b: 0 });
+    setAnalysis(null); setParts({ a: null, b: null }); setOverrides({ a: {}, b: {} });
+    setResult(null); setTab("notes"); setActive("a"); setStale(false); setError(null); setNotice(null);
+    set({ title: "", titleB: "", recordNo: "" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const loadHistory = useCallback(async () => {
     try {
       const { data } = await axios.get(`${API}/conversions`);
@@ -100,6 +109,10 @@ export default function Creator() {
   };
   const onFileA = (f) => { setFiles((p) => ({ ...p, a: f })); setStarts((p) => ({ ...p, a: 0 })); setS((p) => ({ ...p, title: stem(f.name) })); scanFile("a", f); };
   const onFileB = (f) => { setFiles((p) => ({ ...p, b: f })); setStarts((p) => ({ ...p, b: 0 })); setS((p) => ({ ...p, titleB: stem(f.name) })); scanFile("b", f); };
+  useEffect(() => {
+    if (s.twoSided && s.sideMode === "continue" && s.title) set({ titleB: `${s.title} (part 2)`.slice(0, 40) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.title, s.twoSided, s.sideMode]);
 
   const analyzeSide = async (file, start) => {
     const form = new FormData();
@@ -111,6 +124,15 @@ export default function Creator() {
     const { data } = await axios.post(`${API}/analyze`, form);
     return data;
   };
+
+  // moving the window re-reads the notes from that spot automatically
+  const analyzeRef = useRef(null);
+  useEffect(() => {
+    if (!analysis || !files.a) return undefined;
+    const t = setTimeout(() => analyzeRef.current && analyzeRef.current(), 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [starts.a, starts.b]);
 
   const needsB = s.twoSided && s.sideMode === "file";
   const canAnalyze = files.a && (!needsB || files.b) && !busy;
@@ -144,6 +166,8 @@ export default function Creator() {
     } finally { setBusy(null); }
   };
 
+  analyzeRef.current = onAnalyze;
+
   const onPickTune = (t) => {
     setError(null); setNotice(null);
     set({ title: t.title });
@@ -176,6 +200,8 @@ export default function Creator() {
         overrides_b: s.twoSided ? overrides.b : null,
       });
       setResult(data); setTab("preview"); loadHistory();
+      if (data.partition) setParts({ a: data.partition, b: data.partition_b || null });
+      if (data.toy_fixes > 0) setNotice(`${data.toy_fixes} note(s) were staggered onto free beats so the toy can play them — exactly as the factory records do.`);
     } catch (e) {
       setError(e?.response?.data?.detail || "Pressing failed. Try again.");
     } finally { setBusy(null); }
@@ -284,18 +310,26 @@ export default function Creator() {
         {/* Controls */}
         <aside className="col-span-12 lg:col-span-4 flex flex-col gap-6">
           <div className={`${CARD} p-5 flex flex-col gap-3`}>
-            <h2 className="font-sans font-black text-xl tracking-tight flex items-center gap-2">
-              <Music4 className="h-5 w-5" /> 1 · LOAD MIDI
-            </h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="font-sans font-black text-xl tracking-tight flex items-center gap-2">
+                <Music4 className="h-5 w-5" /> 1 · LOAD MIDI
+              </h2>
+              <button
+                type="button" data-testid="new-record-button" onClick={resetAll}
+                className="font-sans font-black text-xs px-3 py-1.5 rounded-lg border-2 border-[#1D3557] bg-white hover:bg-[#E63946] hover:text-white flex items-center gap-1 shadow-[2px_2px_0_0_#1D3557]"
+              >
+                <Eraser className="h-3.5 w-3.5" /> CLEAR / NEW RECORD
+              </button>
+            </div>
             <UploadZone file={files.a} onFile={onFileA} onError={setError} testId="midi-upload-zone" label={needsB ? "Side A" : null} />
             {scans.a && (
-              <SongOverview scan={scans.a} duration={s.duration} start={starts.a} onStart={(v) => setStarts((p) => ({ ...p, a: v }))} label={needsB ? "Side A" : "Whole song"} />
+              <SongOverview scan={scans.a} duration={s.duration} start={starts.a} onStart={(v) => setStarts((p) => ({ ...p, a: v }))} label={needsB ? "Side A" : "Whole song"} revSeconds={revSeconds} />
             )}
             {needsB && (
               <>
                 <UploadZone file={files.b} onFile={onFileB} onError={setError} testId="midi-upload-zone-b" label="Side B" />
                 {scans.b && (
-                  <SongOverview scan={scans.b} duration={s.duration} start={starts.b} onStart={(v) => setStarts((p) => ({ ...p, b: v }))} label="Side B" />
+                  <SongOverview scan={scans.b} duration={s.duration} start={starts.b} onStart={(v) => setStarts((p) => ({ ...p, b: v }))} label="Side B" revSeconds={revSeconds} />
                 )}
               </>
             )}

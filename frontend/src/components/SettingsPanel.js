@@ -120,7 +120,7 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
       )}
 
       <div>
-        <Row icon={Clock} label="Capture window" value={`${s.duration}s`} testId="duration-value" />
+        <Row icon={Clock} label="Window: 86 beats" value={`${s.duration}s of song`} testId="duration-value" />
         <input
           type="range" min="5" max="45" step="1" value={s.duration}
           data-testid="duration-slider"
@@ -129,7 +129,7 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
         />
         <div className="flex items-center justify-between gap-2 mt-1">
           <p className="font-mono text-[10px] text-[#457B9D]">
-            {s.duration}s of song → 1 revolution ({revSeconds}s) ={" "}
+            beat = {Math.round((s.duration / 86) * 1000)} ms of song → 1 revolution ({revSeconds}s) ={" "}
             <span className={`font-bold ${pct === 100 ? "text-[#2A9D8F]" : "text-[#E63946]"}`} data-testid="window-speed">{pct}% tempo</span>
           </p>
           {pct !== 100 && (

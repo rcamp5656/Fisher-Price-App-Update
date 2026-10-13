@@ -77,6 +77,7 @@ export function SpecSheet({ result }) {
   const cells = [
     ["Record #", result.record_no ?? "—"],
     ["Pins placed", result.pin_count],
+    ["Staggered", result.toy_fixes ?? 0],
     ["On-pitch", result.exact],
     ["Snapped", result.adjusted],
     ["Merged", result.merged ?? 0],

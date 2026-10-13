@@ -1,0 +1,32 @@
+{
+  "summary": "Iter 8 regression — equilateral triangle pins, relaxed per-row/per-column playable rule, numbering start, title replace on upload. 7/8 new backend tests PASS (59/60 total); 1 FAIL: /api/press default pin_radius returns 0.9 instead of spec'd 0.8. All frontend flows pass end-to-end on preview URL.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/press", "issue": "Pydantic PressRequest default pin_radius=0.9 but spec and fp.R_PIN=0.8 — pressing without the field returns record with pin_radius=0.9. Fix server.py line 93: Field(0.8, ge=0.4, le=1.0). UI slider defaults to 0.80mm already and sends it explicitly so UI flow is unaffected.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter8_pins_numbering.py",
+    "/app/test_reports/pytest/iter8_full.xml"
+  ],
+  "action_items": [
+    "server.py line 93: change PressRequest.pin_radius default from 0.9 to 0.8 to match fp.R_PIN and iter8 spec."
+  ],
+  "critical_code_review_comments": [
+    "server.py PressRequest default pin_radius=0.9 is out of sync with fp.R_PIN=0.8 and iter8 spec (pinDepth=0.8).",
+    "server.py _record_no still builds a regex from unescaped user title; empty / regex-special titles can crash /api/next-record-no (carried over, unresolved).",
+    "server.py still uses deprecated @app.on_event('shutdown') (carried over)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter8_pins_numbering.py"
+  ],
+  "success_rate": {"backend": "98% (59/60 pytest, 7/8 new)", "frontend": "100% (all iter8 UI assertions pass)"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "TEST_Iter8_Num1, TEST_Iter8_Num2, TEST_Iter8_PinDefault, TEST_Iter8_PinTooLow (rejected), TEST_PressA (UI). numbering start restored to 6 at end of each run.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter8: /api/numbering {start:int ge=1,le=999}; _record_no returns max(start, highest+1) unless same-title reuse. UI numbering-start-input (data-testid) saves on blur/Enter. UI already defaults pin_radius slider to 0.80mm — only the backend Pydantic field default is stale at 0.9. AudioContext createOscillator wrap via add_init_script works (not evaluate afterwards). Hidden midi-upload-zone-input: use page.set_input_files(selector, path) directly, don't wait_for_selector visible.",
+  "rca of the issue": "server.py line 93: Field(0.9, ge=0.4, le=1.0) was set in iter7 when default was raised; iter8 spec explicitly reverts default to 0.8 (apex height of equilateral triangle pin) matching fp.R_PIN. Clients that omit pin_radius currently persist 0.9. One-line fix: change the default to 0.8."
+}

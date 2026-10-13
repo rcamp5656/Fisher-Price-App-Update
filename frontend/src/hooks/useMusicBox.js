@@ -3,7 +3,7 @@ import { NOTES, MAX_BEAT, SIDE_GAP, REAL_PITCH_OFFSET, midiToFreq } from "../lib
 
 // Music-box tine: strong fundamental, decaying inharmonic partials, soft pluck transient
 const PARTIALS = [[1, 1.0, 1.9], [2.0, 0.45, 1.0], [3.01, 0.22, 0.55], [4.16, 0.12, 0.28]];
-function pluck(ctx, dest, freq, when) {
+export function pluck(ctx, dest, freq, when) {
   const out = ctx.createGain();
   out.gain.value = 0.3;
   out.connect(dest);
@@ -38,7 +38,7 @@ function pluck(ctx, dest, freq, when) {
   noise.start(when);
 }
 
-const newCtx = () => new (window.AudioContext || window.webkitAudioContext)();
+export const newCtx = () => new (window.AudioContext || window.webkitAudioContext)();
 
 // sequence: array of partitions played back to back (side A, then side B)
 export function useMusicBox(sequence, revSeconds, loop) {

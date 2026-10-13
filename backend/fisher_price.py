@@ -200,6 +200,26 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
 # ---------------------------------------------------------------------------
 # 16 tones -> 22 physical tracks (doubled tracks let fast repeats reset)
 # ---------------------------------------------------------------------------
+def stagger_partition(partition: List[List[bool]]) -> int:
+    """One pin per beat across the whole disc, like the factory records:
+    extra notes on a beat slide to the nearest free beat (else dropped)."""
+    beats = len(partition[0])
+    moved = 0
+    used = [any(row[b] for row in partition) for b in range(beats)]
+    for b in range(beats):
+        tones = [t for t, row in enumerate(partition) if row[b]]
+        for t in tones[1:]:
+            partition[t][b] = False
+            moved += 1
+            for d in (1, -1, 2, -2, 3, -3, 4, -4):
+                nb = b + d
+                if 0 <= nb < beats and not used[nb]:
+                    partition[t][nb] = True
+                    used[nb] = True
+                    break
+    return moved
+
+
 def make_playable(partition: List[List[bool]], comb: Comb = DEFAULT_COMB) -> int:
     """Enforce the toy's mechanics in place: one note per beat across the disc
     (done by stagger) and a single tine cannot strike on two consecutive beats
@@ -707,6 +727,9 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
     flat-backed halves to print pins-up and glue back to back (no supports)."""
     label_a = title if engrave else ""
     label_b = title_b if engrave else ""
+    toy_fixes = stagger_partition(partition) + make_playable(partition, comb)
+    if partition_b is not None:
+        toy_fixes += stagger_partition(partition_b) + make_playable(partition_b, comb)
     common = dict(marks=engrave, record_no=record_no, comb=comb, pin_radius=pin_radius)
     mesh, pin_count = build_mesh(partition, thickness, label_a, partition_b, label_b,
                                  overrides=overrides, overrides_b=overrides_b, **common)
@@ -730,6 +753,7 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
         "stats": {
             "pin_count": pin_count,
             "pin_radius": pin_radius,
+            "toy_fixes": toy_fixes,
             "thickness": thickness,
             "beats": MAX_BEAT,
             "triangles": int(len(mesh.faces)),
