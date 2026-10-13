@@ -208,6 +208,10 @@ on an original Fisher-Price music box record player.
   a dot row with the current disc highlighted, matching badge colour; long titles squeezed via textLength,
   RECORD / #no split into two lines, header shrunk so nothing runs under the disc art.
 - Defaults load no longer flags "settings changed" on an opened record.
+- **Dedication dial + side-B toggle**: `ded_height` (2.0–3.5 mm, default 2.4) and `ded_b` on press/album/testdisc,
+  stored on records, SCAD honours both; Settings slider "Dedication letters" with nozzle hints, toggle shown for
+  two-sided discs. **Shelf colours**: RecordShelf album tiles/chips/tags use the sleeve-card palette (`ALBUM_COLOURS`).
+- Direct ZIP link given to user: {API}/api/source.zip.
 - Verified: curl on all new endpoints, pytest (analyze/press/api/pack green), browser smoke (shared ctx, save default).
 
 ## Backlog / Remaining

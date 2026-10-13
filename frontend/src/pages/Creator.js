@@ -29,7 +29,7 @@ const emptyAnalysis = () => ({
 const DEFAULTS = {
   title: "", titleB: "", thickness: 3.0, duration: TOY_REV_SECONDS, autoTranspose: true,
   manualOffset: 0, twoSided: false, sideMode: "continue", engrave: true, recordNo: "", nextNo: null,
-  pinRadius: 0.8, roll: "before", autoFit: true, chords: false, voices: 1,
+  pinRadius: 0.8, roll: "before", autoFit: true, chords: false, voices: 1, dedHeight: 2.4, dedB: true,
 };
 
 export default function Creator() {
@@ -200,6 +200,7 @@ export default function Creator() {
       const form = new FormData();
       form.append("thickness", String(s.twoSided ? 3 : s.thickness));
       form.append("pin_radius", String(s.pinRadius));
+      form.append("ded_height", String(s.dedHeight));
       form.append("engrave", String(!!s.engrave));
       const { data } = await axios.post(`${API}/testdisc`, form);
       openHistory(data); loadHistory();
@@ -269,6 +270,8 @@ export default function Creator() {
         merged: analysis.a.merged + (b?.merged || 0),
         record_no: s.recordNo === "" ? null : Number(s.recordNo),
         pin_radius: s.pinRadius,
+        ded_height: s.dedHeight,
+        ded_b: s.dedB !== false,
         overrides: overrides.a,
         overrides_b: s.twoSided ? overrides.b : null,
         roll: s.roll,
@@ -294,7 +297,7 @@ export default function Creator() {
     setParts({ a: h.partition, b: h.partition_b || null });
     setOverrides({ a: h.overrides || {}, b: h.overrides_b || {} });
     setActive("a"); setStale(false);
-    set({ title: h.title, titleB: h.title_b || "", twoSided: !!h.two_sided, thickness: h.thickness, duration: h.duration, recordNo: "", pinRadius: h.pin_radius || 0.8, roll: h.roll || "before" });
+    set({ title: h.title, titleB: h.title_b || "", twoSided: !!h.two_sided, thickness: h.thickness, duration: h.duration, recordNo: "", pinRadius: h.pin_radius || 0.8, roll: h.roll || "before", dedHeight: h.ded_height || 2.4, dedB: h.ded_b !== false });
     setTimeout(() => { skipStale.current = false; }, 0);
   };
 

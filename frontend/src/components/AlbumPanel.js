@@ -36,6 +36,8 @@ export default function AlbumPanel({ api, file, settings, tracks, skyline, melod
     form.append("thickness", String(settings.thickness));
     form.append("engrave", String(!!settings.engrave));
     form.append("pin_radius", String(settings.pinRadius));
+    form.append("ded_height", String(settings.dedHeight ?? 2.4));
+    form.append("ded_b", String(settings.dedB !== false));
     form.append("roll", settings.roll);
     form.append("auto_transpose", String(!!settings.autoTranspose));
     form.append("manual_offset", String(settings.manualOffset));

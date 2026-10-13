@@ -856,7 +856,7 @@ def _extrude_label(shapes, H: float) -> List:
     return meshes
 
 
-def _text_meshes(title: str, H: float, number: int = 0, dedication: str = DEDICATION) -> List:
+def _text_meshes(title: str, H: float, number: int = 0, dedication: str = DEDICATION, ded_height: float = DED_H) -> List:
     title = (title or "").strip()
     shapes = []
     if title:
@@ -864,7 +864,7 @@ def _text_meshes(title: str, H: float, number: int = 0, dedication: str = DEDICA
         if shape is not None:
             shapes.append(_bend(shape))
     if dedication:
-        ded = _text_shape(dedication, DED_R, DED_H, DED_ARC)
+        ded = _text_shape(dedication, DED_R, ded_height, DED_ARC)
         if ded is not None:
             shapes.append(_bend(ded, DED_R, DED_CENTRE))
     if number:
@@ -928,7 +928,8 @@ def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
                title: str = "", partition_b: List[List[bool]] = None,
                title_b: str = "", marks: bool = True, record_no: int = 6,
                comb: Comb = DEFAULT_COMB, overrides: Dict = None, overrides_b: Dict = None,
-               pin_radius: float = R_PIN, flat_back: bool = False):
+               pin_radius: float = R_PIN, flat_back: bool = False,
+               ded_height: float = DED_H, ded_b: bool = True):
     H = float(thickness)
     base = _cyl(R_STOCK, H, H / 2)
     two_sided = partition_b is not None
@@ -958,11 +959,11 @@ def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
     # pins (bumps) refill groove segments up to the surface
     adds = _pin_meshes(partition, H, comb, overrides, pin_radius)
     pin_count = len(adds)
-    adds.extend(_text_meshes(title, H, record_no if marks else 0))
+    adds.extend(_text_meshes(title, H, record_no if marks else 0, DEDICATION, ded_height))
     if two_sided:
         side_b = _pin_meshes(partition_b, H, comb, overrides_b, pin_radius)
         pin_count += len(side_b)
-        side_b.extend(_text_meshes(title_b, H, record_no if marks else 0))
+        side_b.extend(_text_meshes(title_b, H, record_no if marks else 0, DEDICATION if ded_b else "", ded_height))
         for m in side_b:
             m.apply_transform(flip)
         adds.extend(side_b)
@@ -1112,7 +1113,7 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
             label_a: str = None, label_b: str = None, marks: bool = True,
             record_no: int = 6, comb: Comb = DEFAULT_COMB,
             overrides: Dict = None, overrides_b: Dict = None,
-            pin_radius: float = R_PIN) -> str:
+            pin_radius: float = R_PIN, ded_height: float = DED_H, ded_b: bool = True) -> str:
     label_a = title if label_a is None else label_a
     label_b = title_b if label_b is None else label_b
     lines = _scad_pins(partition, "false", comb, overrides)
@@ -1122,14 +1123,15 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
     labels = [f'\t\tglyph("{_scad_str(ch)}",{ang},{size},false);'
               for ch, ang, size in label_glyphs(label_a)]
     ded = lambda side: [f'\t\tmark("{_scad_str(ch)}",{ang},dedR,{size},{side});'
-                        for ch, ang, size in label_glyphs(DEDICATION, DED_R, DED_H, DED_ARC, DED_CENTRE)]
+                        for ch, ang, size in label_glyphs(DEDICATION, DED_R, ded_height, DED_ARC, DED_CENTRE)]
     labels += ded("false")
     if marks:
         labels += [f'\t\tmark("{record_no}",180,markR,3.2,false);', '\t\tdash(false);']
     if partition_b is not None:
         labels += [f'\t\tglyph("{_scad_str(ch)}",{ang},{size},true);'
                    for ch, ang, size in label_glyphs(label_b)]
-        labels += ded("true")
+        if ded_b:
+            labels += ded("true")
         if marks:
             labels += [f'\t\tmark("{record_no}",180,markR,3.2,true);', '\t\tdash(true);']
     from datetime import datetime
@@ -1304,7 +1306,8 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
           partition_b: List[List[bool]] = None, title_b: str = "",
           engrave: bool = True, record_no: int = 6, comb: Comb = DEFAULT_COMB,
           overrides: Dict = None, overrides_b: Dict = None,
-          pin_radius: float = R_PIN, roll: str = "before", chords: bool = False, voices: int = 16) -> Dict:
+          pin_radius: float = R_PIN, roll: str = "before", chords: bool = False, voices: int = 16,
+          ded_height: float = DED_H, ded_b: bool = True) -> Dict:
     """Partition(s) -> STL / SCAD / FPR files. Two-sided discs also get two
     flat-backed halves to print pins-up and glue back to back (no supports)."""
     label_a = title if engrave else ""
@@ -1312,7 +1315,8 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
     toy_fixes = (sum(limit_voices(partition, voices, comb, roll)) if chords else stagger_partition(partition, comb, roll)) + sum(make_playable(partition, comb))
     if partition_b is not None:
         toy_fixes += (sum(limit_voices(partition_b, voices, comb, roll)) if chords else stagger_partition(partition_b, comb, roll)) + sum(make_playable(partition_b, comb))
-    common = dict(marks=engrave, record_no=record_no, comb=comb, pin_radius=pin_radius)
+    ded_height = max(2.0, min(3.5, float(ded_height)))
+    common = dict(marks=engrave, record_no=record_no, comb=comb, pin_radius=pin_radius, ded_height=ded_height, ded_b=ded_b)
     mesh, pin_count = build_mesh(partition, thickness, label_a, partition_b, label_b,
                                  overrides=overrides, overrides_b=overrides_b, **common)
     mesh, mesh_check = heal_mesh(mesh)
@@ -1335,10 +1339,13 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
         "fpr_b": to_fpr(partition_b, title_b) if partition_b is not None else None,
         "scad": "// Fisher-Price Record Maker - Dedicated To My Fiancee Barbara - Copyright 2026 Russ Campbell. All rights reserved.\n" + to_scad(partition, thickness, title, partition_b, title_b, label_a, label_b,
                         marks=engrave, record_no=record_no, comb=comb,
-                        overrides=overrides, overrides_b=overrides_b, pin_radius=pin_radius),
+                        overrides=overrides, overrides_b=overrides_b, pin_radius=pin_radius,
+                        ded_height=ded_height, ded_b=ded_b),
         "stats": {
             "pin_count": pin_count,
             "pin_radius": pin_radius,
+            "ded_height": ded_height,
+            "ded_b": ded_b,
             "toy_fixes": toy_fixes,
             "mesh_check": mesh_check,
             "roll": roll,

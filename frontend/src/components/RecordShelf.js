@@ -3,6 +3,9 @@ import { Library, Plus } from "lucide-react";
 import { CARD } from "../lib/fp";
 
 const FIRST = 6;
+// same 10-colour palette as the sleeve-card spines (backend _ALBUM_COLOURS), by disc index
+export const ALBUM_COLOURS = ["#E63946", "#2A9D8F", "#FFB703", "#457B9D", "#8E44AD", "#F4845F", "#1D3557", "#6A994E", "#D77A61", "#5BC0BE"];
+export const albumColour = (h) => ALBUM_COLOURS[((h.album_index || 1) - 1) % ALBUM_COLOURS.length];
 
 // Every record number from #1 up — factory 1-5, then your pressings; gaps are clickable
 export default function RecordShelf({ history, onGap, onOpen, current }) {
@@ -37,6 +40,7 @@ export default function RecordShelf({ history, onGap, onOpen, current }) {
                 <React.Fragment key={h.id}>
                   {i > 0 && <span className="text-[#457B9D]">→</span>}
                   <button type="button" data-testid={`shelf-album-disc-${h.id}`} onClick={() => onOpen(h)}
+                    style={{ borderLeftColor: albumColour(h), borderLeftWidth: 5 }}
                     className={`px-1.5 py-0.5 rounded border ${h.id === nextId ? "border-[#E63946] bg-[#FFB703] font-bold" : current && h.id === current.id ? "border-[#2A9D8F] bg-[#2A9D8F]/20 font-bold" : "border-[#1D3557]/40 bg-white"}`}>
                     #{h.record_no} · {h.album_index}/{h.album_count}{h.id === nextId ? " · NEXT" : current && h.id === current.id ? " · PLAYING" : ""}
                   </button>
@@ -63,13 +67,14 @@ export default function RecordShelf({ history, onGap, onOpen, current }) {
               <div key={n} className="relative flex flex-col items-center gap-0.5">
                 {isNext && <span data-testid={`shelf-next-${n}`} className="absolute -top-3 font-mono text-[9px] font-black text-[#E63946] whitespace-nowrap">NEXT ▶</span>}
                 <button data-testid={`shelf-record-${n}`} onClick={() => onOpen(h)} title={`${h.title}${h.two_sided ? ` / ${h.title_b}` : ""}${h.album_id ? ` — album disc ${albumTag(h)}` : ""}`}
+                  style={h.album_id && !isNext && !isOpen ? { backgroundColor: albumColour(h) } : undefined}
                   className={`h-14 w-14 rounded-full border-2 shadow-[2px_2px_0_0_#1D3557] hover:-translate-y-0.5 transition-transform duration-150 flex items-center justify-center relative ${
-                    isNext ? "border-[#E63946] ring-4 ring-[#FFB703] bg-[#E63946]" : isOpen ? "border-[#1D3557] ring-4 ring-[#2A9D8F] bg-[#E63946]" : h.album_id ? "border-[#1D3557] bg-[#457B9D]" : "border-[#1D3557] bg-[#E63946]"
+                    isNext ? "border-[#E63946] ring-4 ring-[#FFB703] bg-[#E63946]" : isOpen ? "border-[#1D3557] ring-4 ring-[#2A9D8F] bg-[#E63946]" : h.album_id ? "border-[#1D3557]" : "border-[#1D3557] bg-[#E63946]"
                   }`}>
                   <span className="absolute inset-[9px] rounded-full bg-[#F4F1EA] border border-[#1D3557]/30" />
                   <span className="relative font-mono font-black text-sm text-[#1D3557]">{n}</span>
                 </button>
-                {h.album_id && <span data-testid={`shelf-album-tag-${n}`} className="font-mono text-[9px] text-[#457B9D]">{albumTag(h)}</span>}
+                {h.album_id && <span data-testid={`shelf-album-tag-${n}`} style={{ color: albumColour(h) }} className="font-mono text-[9px] font-black">{albumTag(h)}</span>}
               </div>
             );
           }

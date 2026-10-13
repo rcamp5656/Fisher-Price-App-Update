@@ -1,5 +1,5 @@
 import React from "react";
-import { Wand2, Ruler, Clock, Tag, Disc3, Gauge, Hash, Layers, Target } from "lucide-react";
+import { Wand2, Ruler, Clock, Tag, Disc3, Gauge, Hash, Layers, Target, Heart } from "lucide-react";
 import { speedPct } from "../lib/fp";
 
 export function Toggle({ checked, onChange, testId }) {
@@ -236,6 +236,29 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
             ? "Shallow pin — the tine may not be pushed far enough to ring. Originals ≈ 0.8 mm."
             : `Triangle ramp on the groove wall: 1.6 mm base buried 0.5 mm into the wall, apex pushing the tine sideways by this much. Originals ≈ 0.8 mm.`}
         </p>
+      </div>
+
+      <div>
+        <Row icon={Heart} label="Dedication letters (Barbara ring)" value={`${(s.dedHeight ?? 2.4).toFixed(1)}mm`} testId="ded-height-value" />
+        <input
+          type="range" min="2" max="3.5" step="0.1" value={s.dedHeight ?? 2.4}
+          data-testid="ded-height-slider"
+          onChange={(e) => set({ dedHeight: Number(e.target.value) })}
+          className="w-full mt-2 accent-[#E63946]"
+        />
+        <p className="font-mono text-[10px] text-[#457B9D] mt-1" data-testid="ded-height-hint">
+          {(s.dedHeight ?? 2.4) < 2.5
+            ? "Fine lettering — crisp with a 0.25 mm nozzle; a 0.4 mm nozzle may blur the thin strokes."
+            : (s.dedHeight ?? 2.4) <= 3.0
+              ? "Good match for a 0.4 mm nozzle — strokes ≈ 0.45 mm, still clear of the title arc and record number."
+              : "Bold lettering — easiest to read, ring now sits 10.3–13.8 mm from the spindle (title starts at 14 mm)."}
+        </p>
+        {s.twoSided && (
+          <label className="flex items-center justify-between mt-2 font-mono text-xs">
+            <span>Dedication ring on side B too</span>
+            <Toggle checked={s.dedB !== false} onChange={(v) => set({ dedB: v })} testId="ded-b-toggle" />
+          </label>
+        )}
       </div>
     </div>
   );
