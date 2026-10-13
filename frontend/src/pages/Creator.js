@@ -24,7 +24,7 @@ const emptyAnalysis = () => ({
 const DEFAULTS = {
   title: "", titleB: "", thickness: 3.0, duration: TOY_REV_SECONDS, autoTranspose: true,
   manualOffset: 0, twoSided: false, sideMode: "continue", engrave: true, recordNo: "", nextNo: null,
-  pinRadius: 0.8,
+  pinRadius: 0.8, roll: "before",
 };
 
 export default function Creator() {
@@ -97,7 +97,7 @@ export default function Creator() {
     if (skipStale.current) { skipStale.current = false; return; }
     if (analysis) setStale(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files.a, files.b, starts.a, starts.b, s.duration, s.autoTranspose, s.manualOffset, s.twoSided, s.sideMode, combVersion]);
+  }, [files.a, files.b, starts.a, starts.b, s.duration, s.autoTranspose, s.manualOffset, s.twoSided, s.sideMode, s.roll, combVersion]);
 
   const scanFile = async (key, f) => {
     const form = new FormData();
@@ -121,6 +121,7 @@ export default function Creator() {
     form.append("start", String(start));
     form.append("auto_transpose", String(s.autoTranspose));
     form.append("manual_offset", String(s.manualOffset));
+    form.append("roll", s.roll);
     const { data } = await axios.post(`${API}/analyze`, form);
     return data;
   };
@@ -198,6 +199,7 @@ export default function Creator() {
         pin_radius: s.pinRadius,
         overrides: overrides.a,
         overrides_b: s.twoSided ? overrides.b : null,
+        roll: s.roll,
       });
       setResult(data); setTab("preview"); loadHistory();
       if (data.partition) setParts({ a: data.partition, b: data.partition_b || null });
@@ -216,7 +218,7 @@ export default function Creator() {
     setParts({ a: h.partition, b: h.partition_b || null });
     setOverrides({ a: h.overrides || {}, b: h.overrides_b || {} });
     setActive("a"); setStale(false);
-    set({ title: h.title, titleB: h.title_b || "", twoSided: !!h.two_sided, thickness: h.thickness, duration: h.duration, recordNo: "", pinRadius: h.pin_radius || 0.8 });
+    set({ title: h.title, titleB: h.title_b || "", twoSided: !!h.two_sided, thickness: h.thickness, duration: h.duration, recordNo: "", pinRadius: h.pin_radius || 0.8, roll: h.roll || "before" });
     setTimeout(() => { skipStale.current = false; }, 0);
   };
 
@@ -276,7 +278,7 @@ export default function Creator() {
               <EditorWorkspace
                 sides={sides} active={active} onActive={setActive}
                 duration={s.duration} revSeconds={revSeconds} onRevSeconds={setRevSeconds}
-                loop={loop} onLoop={setLoop}
+                loop={loop} onLoop={setLoop} roll={s.roll}
               />
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">

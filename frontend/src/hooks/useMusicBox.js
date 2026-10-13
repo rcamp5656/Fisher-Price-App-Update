@@ -66,7 +66,7 @@ export function useMusicBox(sequence, revSeconds, loop) {
   // playback jumps to the first used beat of each side and stops after the last one
   const layoutRef = useRef([]);
 
-  const play = useCallback(() => {
+  const play = useCallback((from = null) => {
     clearTimers();
     if (ctxRef.current) ctxRef.current.close();
     const ctx = newCtx();
@@ -78,29 +78,34 @@ export function useMusicBox(sequence, revSeconds, loop) {
     const beatSec = revSeconds / MAX_BEAT;
     startRef.current = t0;
     revRef.current = revSeconds;
+    const fromSide = from && Number.isInteger(from.side) ? from.side : 0;
+    const fromBeat = from && Number.isFinite(from.beat) ? Math.max(0, Math.floor(from.beat)) : null;
     let cursor = 0;
-    const layout = sequence.map((partition) => {
+    const layout = sequence.map((partition, i) => {
+      if (i < fromSide) return { first: 0, start: 0, len: 0, skip: true };
       const beats = [];
-      partition.forEach((row) => row.forEach((on, b) => { if (on) beats.push(b); }));
-      const first = beats.length ? Math.min(...beats) : 0;
-      const last = beats.length ? Math.max(...beats) : 0;
+      partition.forEach((row) => row.forEach((on, b) => { if (on && !(i === fromSide && fromBeat !== null && b < fromBeat)) beats.push(b); }));
+      let first = beats.length ? Math.min(...beats) : 0;
+      if (i === fromSide && fromBeat !== null) first = fromBeat;
+      const last = beats.length ? Math.max(...beats) : first;
       const len = (last - first + 1) * beatSec + 1.2;
-      const entry = { first, start: cursor, len };
+      const entry = { first, start: cursor, len, skip: false };
       cursor += len + SIDE_GAP;
       return entry;
     });
     layoutRef.current = layout;
     sequence.forEach((partition, i) => {
-      const { first, start } = layout[i];
+      const { first, start, skip } = layout[i];
+      if (skip) return;
       partition.forEach((row, tone) =>
         row.forEach((on, beat) => {
-          if (on) pluck(ctx, master, midiToFreq(NOTES[tone] + REAL_PITCH_OFFSET), t0 + start + (beat - first) * beatSec);
+          if (on && beat >= first) pluck(ctx, master, midiToFreq(NOTES[tone] + REAL_PITCH_OFFSET), t0 + start + (beat - first) * beatSec);
         })
       );
-      if (i > 0) timersRef.current.push(setTimeout(() => setSideIdx(i), (start + 0.1) * 1000));
+      if (i > fromSide) timersRef.current.push(setTimeout(() => setSideIdx(i), (start + 0.1) * 1000));
     });
     setPlaying(true);
-    setSideIdx(0);
+    setSideIdx(fromSide);
     timersRef.current.push(setTimeout(() => {
       if (loopRef.current) playRef.current();
       else stop();
@@ -115,7 +120,7 @@ export function useMusicBox(sequence, revSeconds, loop) {
     if (!ctx || !layout.length) return null;
     const el = ctx.currentTime - startRef.current;
     const beatSec = revRef.current / MAX_BEAT;
-    let side = layout.findIndex((l) => el < l.start + l.len + SIDE_GAP);
+    let side = layout.findIndex((l) => !l.skip && el < l.start + l.len + SIDE_GAP);
     if (side < 0) side = layout.length - 1;
     const l = layout[side];
     return { side, beat: l.first + (el - l.start) / beatSec };

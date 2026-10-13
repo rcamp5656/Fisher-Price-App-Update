@@ -69,24 +69,28 @@ const canPlace = (p, tone, b) => {
   }
   return true;
 };
-// move the pin at (tone, b) to the nearest free beat, searching `prefer` direction first
+// move the pin at (tone, b) to the nearest free beat, leaning `prefer` direction for the first LEAN_BEATS
+const LEAN_BEATS = 4;
 const slide = (p, tone, b, prefer) => {
   p[tone][b] = false;
-  for (let d = 1; d < MAX_BEAT; d++) {
-    for (const nb of [b + prefer * d, b - prefer * d]) {
-      if (nb >= 0 && nb < MAX_BEAT && canPlace(p, tone, nb)) { p[tone][nb] = true; return true; }
-    }
+  const cands = [];
+  for (let d = 1; d < LEAN_BEATS; d++) cands.push(b + prefer * d);
+  for (let d = LEAN_BEATS; d < MAX_BEAT; d++) cands.push(b + prefer * d, b - prefer * d);
+  for (let d = 1; d < LEAN_BEATS; d++) cands.push(b - prefer * d);
+  for (const nb of cands) {
+    if (nb >= 0 && nb < MAX_BEAT && canPlace(p, tone, nb)) { p[tone][nb] = true; return true; }
   }
   return false;
 };
 
-// roll same-beat notes like the factory records: top note keeps the beat, lower ones slide (preferring earlier)
-export const staggerPartition = (p) => {
+// roll same-beat notes like the factory records: top note keeps the beat, lower ones lean before (default) or after it
+export const staggerPartition = (p, roll = "before") => {
   const out = clonePartition(p);
+  const prefer = roll === "after" ? 1 : -1;
   for (let b = 0; b < MAX_BEAT; b++) {
     const tones = [];
     out.forEach((row, t) => { if (row[b]) tones.push(t); });
-    tones.slice(0, -1).forEach((t) => slide(out, t, b, -1));
+    tones.slice(0, -1).forEach((t) => slide(out, t, b, prefer));
   }
   return out;
 };
@@ -106,7 +110,19 @@ export const thinRepeats = (p) => {
   return out;
 };
 export const grooveConflicts = repeatConflicts;
-export const makePlayable = (p) => thinRepeats(staggerPartition(p));
+export const makePlayable = (p, roll = "before") => thinRepeats(staggerPartition(p, roll));
+// cells that differ between the MIDI capture and the disc: moved = in MIDI only, placed = on disc only
+export const diffPartitions = (midi, disc) => {
+  const moved = new Set();
+  const placed = new Set();
+  if (!midi || !disc) return { moved, placed };
+  disc.forEach((row, t) => row.forEach((on, b) => {
+    const was = !!(midi[t] && midi[t][b]);
+    if (was && !on) moved.add(`${t}-${b}`);
+    if (on && !was) placed.add(`${t}-${b}`);
+  }));
+  return { moved, placed };
+};
 
 // pitch rows -> 22 physical tracks (mirrors fisher_price.to_physical, with twin overrides)
 export const toPhysical = (p, overrides = {}) => {

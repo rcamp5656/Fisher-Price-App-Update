@@ -44,6 +44,7 @@ class ConversionSummary(BaseModel):
     pin_radius: Optional[float] = None
     toy_fixes: int = 0
     mesh_check: Optional[dict] = None
+    roll: Optional[str] = None
     created_at: str
     note_count: int
     exact: int
@@ -95,6 +96,7 @@ class PressRequest(BaseModel):
     pin_radius: float = Field(0.8, ge=0.4, le=1.0)
     overrides: Optional[dict] = None
     overrides_b: Optional[dict] = None
+    roll: str = Field("before", pattern="^(before|after)$")
 
 
 class CombRequest(BaseModel):
@@ -220,6 +222,7 @@ async def analyze(
     start: float = Form(0.0),
     auto_transpose: bool = Form(True),
     manual_offset: int = Form(0),
+    roll: str = Form("before"),
 ):
     raw = await _read_midi(file)
     comb = await _comb()
@@ -231,6 +234,7 @@ async def analyze(
             auto_transpose=auto_transpose,
             manual_offset=manual_offset,
             comb=comb,
+            roll="after" if roll == "after" else "before",
         )
     except Exception as e:
         logging.exception("analysis failed")
@@ -270,6 +274,7 @@ async def _store(doc_id, filename, title, out, meta, title_b=None,
         "pin_radius": stats.get("pin_radius"),
         "toy_fixes": stats.get("toy_fixes", 0),
         "mesh_check": stats.get("mesh_check"),
+        "roll": stats.get("roll", "before"),
     }
     await db.conversions.insert_one(doc)
     for k in ("stl_b64", "stl_half_a_b64", "stl_half_b_b64", "fpr", "fpr_b", "scad", "_id"):
@@ -292,7 +297,7 @@ async def press(req: PressRequest):
             fp.press, req.partition, req.title.strip(),
             max(min_thick, min(8.0, req.thickness)),
             req.partition_b, title_b or "", req.engrave, record_no, comb,
-            req.overrides, req.overrides_b, req.pin_radius,
+            req.overrides, req.overrides_b, req.pin_radius, req.roll,
         )
     except Exception as e:
         logging.exception("press failed")
@@ -440,12 +445,49 @@ Files
   {name}.scad       OpenSCAD source (edit pins / labels by hand if you like)
   {name}.fpr        music-box tune-tracker file for side A{fprb}
   {name}-label.svg  100 x 60 mm label card for the sleeve (open in a browser and print)
+  mesh-check.txt    pre-flight report: watertight / winding / hole + triangle repairs done before export
 
 Print settings
   0.10-0.12 mm layers, 0.4 mm nozzle (0.25 mm for crisper pins), PLA or PETG
   3-4 perimeters, 40%+ infill, no supports, outer walls <= 40 mm/s, seam at rear
   Two-sided discs are 5 mm thick; single-sided 3 mm
 """
+
+
+def _mesh_report(doc) -> str:
+    c = doc.get("mesh_check") or {}
+    if not c:
+        return "Mesh check: not available for this record (pressed before the pre-flight check existed).\n"
+    yn = lambda v: "yes" if v else "NO"
+    lines = [
+        "Fisher-Price Music Box Record Maker - mesh pre-flight report",
+        "=============================================================",
+        f"Record #{doc.get('record_no') or '-'}: {doc.get('title')}" + (f" / {doc.get('title_b')}" if doc.get("two_sided") else ""),
+        f"Pressed: {doc.get('created_at')}",
+        "",
+        f"Verdict: {'PRINT READY' if c.get('ok') else 'NEEDS ATTENTION'}",
+        f"  watertight (no holes) ............ {yn(c.get('watertight'))}",
+        f"  consistent triangle winding ....... {yn(c.get('winding_consistent'))}",
+        f"  open edges after repair ........... {c.get('open_edges_after')}",
+        f"  solid bodies ...................... {c.get('bodies')}",
+        f"  triangles ......................... {c.get('faces')}",
+        f"  volume ............................ {c.get('volume_mm3')} mm3",
+    ]
+    if c.get("halves_ok") is not None:
+        lines.append(f"  half discs A + B print ready ...... {yn(c.get('halves_ok'))}")
+    lines += [
+        "",
+        "Repairs performed before the STL was written",
+        f"  hole triangles filled ............. {c.get('holes_filled', 0)}",
+        f"  mismatched triangles re-wound ..... {c.get('flipped_faces_fixed', 0)}",
+        f"  duplicate triangles removed ....... {c.get('duplicate_faces_removed', 0)}",
+        f"  zero-area triangles removed ....... {c.get('degenerate_faces_removed', 0)}",
+        f"  open edges before repair .......... {c.get('open_edges_before', 0)}",
+        "",
+        "Method: trimesh merge_vertices -> unique/nondegenerate faces -> fix_winding -> fill_holes -> fix_normals,",
+        "then watertight / winding / boundary-edge verification (scipy graph engine).",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 @api_router.get("/conversions/{conversion_id}/pack")
@@ -465,6 +507,7 @@ async def download_pack(conversion_id: str):
         if doc.get("fpr_b"):
             z.writestr(f"{name}-sideB.fpr", doc["fpr_b"])
         z.writestr(f"{name}-label.svg", _label_card(doc))
+        z.writestr("mesh-check.txt", _mesh_report(doc))
         z.writestr("README.txt", _PACK_README.format(
             no=doc.get("record_no") or "-", title=doc.get("title"), name=name,
             b=f" / {doc.get('title_b')}" if doc.get("two_sided") else "",

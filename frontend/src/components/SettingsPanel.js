@@ -1,5 +1,5 @@
 import React from "react";
-import { Wand2, Ruler, Clock, Tag, Disc3, Gauge, Hash } from "lucide-react";
+import { Wand2, Ruler, Clock, Tag, Disc3, Gauge, Hash, Layers } from "lucide-react";
 import { speedPct } from "../lib/fp";
 
 export function Toggle({ checked, onChange, testId }) {
@@ -118,6 +118,28 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
           />
         </div>
       )}
+
+      <div>
+        <label className="font-mono text-sm flex items-center gap-2 mb-1"><Layers className="h-4 w-4" /> Chord roll direction</label>
+        <div className="grid grid-cols-2 gap-2">
+          {[["before", "LEAN BEFORE"], ["after", "LEAN AFTER"]].map(([v, l]) => (
+            <button
+              key={v} type="button" data-testid={`roll-${v}`}
+              onClick={() => set({ roll: v })}
+              className={`font-sans font-bold text-xs py-2 rounded-md border-2 border-[#1D3557] ${
+                s.roll === v ? "bg-[#1D3557] text-white" : "bg-white hover:bg-[#E9C46A]"
+              }`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        <p className="font-mono text-[10px] text-[#457B9D] mt-1" data-testid="roll-hint">
+          {s.roll === "after"
+            ? "The melody (top note) lands on the beat and the lower chord notes follow just after it — like a harp strummed downward."
+            : "Lower chord notes are plucked just before the beat so the melody (top note) lands exactly on time — like the factory records."}
+        </p>
+      </div>
 
       <div>
         <Row icon={Clock} label="Window: 86 beats" value={`${s.duration}s of song`} testId="duration-value" />

@@ -156,7 +156,7 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
                      auto_transpose: bool = True,
                      manual_offset: int = 0,
                      comb: Comb = DEFAULT_COMB,
-                     stagger: bool = True) -> Dict:
+                     stagger: bool = True, roll: str = "before") -> Dict:
     """Quantize note events onto a tones x MAX_BEAT grid. The player can only
     pluck one tine per beat, so simultaneous notes are staggered onto the
     nearest free beat (like the factory records)."""
@@ -187,7 +187,7 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
         used.add(snapped)
 
     partition_midi = [list(r) for r in partition]
-    staggered = stagger_partition(partition, comb) if stagger else 0
+    staggered = stagger_partition(partition, comb, roll) if stagger else 0
     slid, dropped = make_playable(partition, comb)
     staggered += slid
 
@@ -231,29 +231,36 @@ def _can_place(partition: List[List[bool]], tone: int, b: int, comb: Comb) -> bo
     return True
 
 
+LEAN_BEATS = 4  # how far a rolled note follows the chosen direction before the other side is tried
+
+
 def _slide(partition: List[List[bool]], tone: int, b: int, comb: Comb, prefer: int) -> bool:
-    """Move the pin at (tone, b) to the nearest free beat (searching `prefer`
-    direction first). Returns False only when the disc has no room at all."""
+    """Move the pin at (tone, b) to the nearest free beat, leaning `prefer`
+    direction for the first LEAN_BEATS. Returns False only on a full disc."""
     beats = len(partition[0])
     partition[tone][b] = False
-    for d in range(1, beats):
-        for nb in (b + prefer * d, b - prefer * d):
-            if 0 <= nb < beats and _can_place(partition, tone, nb, comb):
-                partition[tone][nb] = True
-                return True
+    cands = [b + prefer * d for d in range(1, LEAN_BEATS)]
+    cands += [x for d in range(LEAN_BEATS, beats) for x in (b + prefer * d, b - prefer * d)]
+    cands += [b - prefer * d for d in range(1, LEAN_BEATS)]
+    for nb in cands:
+        if 0 <= nb < beats and _can_place(partition, tone, nb, comb):
+            partition[tone][nb] = True
+            return True
     return False
 
 
-def stagger_partition(partition: List[List[bool]], comb: Comb = DEFAULT_COMB) -> int:
+def stagger_partition(partition: List[List[bool]], comb: Comb = DEFAULT_COMB,
+                      roll: str = "before") -> int:
     """The player plucks one tine at a time: notes sharing a beat are rolled
     like the factory records — the top (melody) note keeps the beat, the lower
-    notes slide to the nearest free beats, preferring just before it."""
+    notes slide to the nearest free beats, leaning `before` or `after` it."""
     beats = len(partition[0])
+    prefer = 1 if roll == "after" else -1
     moved = 0
     for b in range(beats):
         hits = [t for t in range(len(partition)) if partition[t][b]]
         for t in hits[:-1]:
-            _slide(partition, t, b, comb, prefer=-1)
+            _slide(partition, t, b, comb, prefer=prefer)
             moved += 1
     return moved
 
@@ -727,10 +734,10 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
 
 def analyze(midi_bytes: bytes, duration: float = 25.0, start: float = 0.0,
             auto_transpose: bool = True, manual_offset: int = 0,
-            comb: Comb = DEFAULT_COMB) -> Dict:
+            comb: Comb = DEFAULT_COMB, roll: str = "before") -> Dict:
     """MIDI window -> editable pitch x 86 partition plus mapping stats."""
     events = parse_midi_events(midi_bytes, duration, start)
-    return _finish_analysis(events_to_record(events, duration, auto_transpose, manual_offset, comb),
+    return _finish_analysis(events_to_record(events, duration, auto_transpose, manual_offset, comb, roll=roll),
                             duration, start)
 
 
@@ -795,14 +802,14 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
           partition_b: List[List[bool]] = None, title_b: str = "",
           engrave: bool = True, record_no: int = 6, comb: Comb = DEFAULT_COMB,
           overrides: Dict = None, overrides_b: Dict = None,
-          pin_radius: float = R_PIN) -> Dict:
+          pin_radius: float = R_PIN, roll: str = "before") -> Dict:
     """Partition(s) -> STL / SCAD / FPR files. Two-sided discs also get two
     flat-backed halves to print pins-up and glue back to back (no supports)."""
     label_a = title if engrave else ""
     label_b = title_b if engrave else ""
-    toy_fixes = stagger_partition(partition, comb) + sum(make_playable(partition, comb))
+    toy_fixes = stagger_partition(partition, comb, roll) + sum(make_playable(partition, comb))
     if partition_b is not None:
-        toy_fixes += stagger_partition(partition_b, comb) + sum(make_playable(partition_b, comb))
+        toy_fixes += stagger_partition(partition_b, comb, roll) + sum(make_playable(partition_b, comb))
     common = dict(marks=engrave, record_no=record_no, comb=comb, pin_radius=pin_radius)
     mesh, pin_count = build_mesh(partition, thickness, label_a, partition_b, label_b,
                                  overrides=overrides, overrides_b=overrides_b, **common)
@@ -832,6 +839,7 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
             "pin_radius": pin_radius,
             "toy_fixes": toy_fixes,
             "mesh_check": mesh_check,
+            "roll": roll,
             "thickness": thickness,
             "beats": MAX_BEAT,
             "triangles": int(len(mesh.faces)),

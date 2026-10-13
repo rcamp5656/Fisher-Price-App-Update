@@ -34,7 +34,7 @@ const same = (a, b) => a.tone === b.tone && a.beat === b.beat;
 // grid lines: strong every 10 beats, light every 5
 const barClass = (b) => (b % 10 === 0 ? "border-l-2 border-l-[#1D3557]/60" : b % 5 === 0 ? "border-l border-l-[#1D3557]/30" : "");
 
-export default function NoteEditor({ partition, onChange, duration, start = 0, playing, getBeat, onTap, conflicts, fit = false }) {
+export default function NoteEditor({ partition, onChange, duration, start = 0, playing, getBeat, onTap, conflicts, fit = false, onSeek, cueBeat = null, ghosts }) {
   const drag = useRef(null);
   const box = useRef(null);
   const [width, setWidth] = useState(0);
@@ -104,15 +104,23 @@ export default function NoteEditor({ partition, onChange, duration, start = 0, p
         </span>
         <span>{secPerBeat.toFixed(2)} s / beat</span>
       </div>
-      <div className="grid" style={cols}>
-        <div />
+      <div className="grid" style={cols} data-testid="beat-ruler" title="Click a beat to play from there">
+        <div className="font-mono text-[8px] text-[#457B9D] leading-none pr-1 text-right self-end">play from ▸</div>
         {beats.map((b) => (
-          <div key={b} className={`relative h-5 font-mono text-[9px] text-[#457B9D] leading-none ${barClass(b)}`}>
+          <div
+            key={b}
+            data-testid={`ruler-beat-${b}`}
+            onClick={() => onSeek && onSeek(b)}
+            className={`relative h-6 font-mono text-[9px] text-[#457B9D] leading-none cursor-pointer hover:bg-[#E63946]/20 rounded-t ${barClass(b)} ${cueBeat === b ? "bg-[#E63946]/30" : ""}`}
+          >
             {b % 10 === 0 && (
-              <span className="absolute left-0.5 top-0 whitespace-nowrap">
+              <span className="absolute left-0.5 top-0 whitespace-nowrap pointer-events-none">
                 <span className="font-bold text-[#1D3557]">{b}</span>
                 <span className="block">{songTime(b)}s</span>
               </span>
+            )}
+            {cueBeat === b && (
+              <span data-testid="cue-marker" className="absolute left-1/2 -translate-x-1/2 bottom-0 w-0 h-0 border-l-[5px] border-r-[5px] border-t-[6px] border-l-transparent border-r-transparent border-t-[#E63946] pointer-events-none" />
             )}
           </div>
         ))}
@@ -139,19 +147,22 @@ export default function NoteEditor({ partition, onChange, duration, start = 0, p
             {beats.map((beat) => {
               const on = partition[tone][beat];
               const clash = on && conflicts.has(`${tone}-${beat}`);
+              const ghost = !on && ghosts && ghosts.has(`${tone}-${beat}`);
               return (
                 <div
                   key={beat}
                   data-tone={tone}
                   data-beat={beat}
                   data-testid={on ? (clash ? `clash-${tone}-${beat}` : `note-${tone}-${beat}`) : undefined}
-                  title={clash ? "Can't be played this close to another note — use MAKE PLAYABLE" : undefined}
+                  title={clash ? "Can't be played this close to another note — use MAKE PLAYABLE" : ghost ? "The MIDI had this note here — it was moved so the toy can play it" : undefined}
                   style={{ height: rowH }}
                   className={`rounded-[2px] border transition-colors duration-100 ${barClass(beat)} ${
                     clash
                       ? "bg-[#FFB703] border-[#E63946] border-2 hover:bg-[#e0a000]"
                       : on
                         ? "bg-[#E63946] border-[#1D3557] hover:bg-[#c42f3b]"
+                        : ghost
+                          ? "bg-white border-dashed border-[#E63946]/70 hover:bg-[#E9C46A]"
                         : tone % 2 === 0
                           ? "bg-white border-[#1D3557]/15 hover:bg-[#E9C46A]"
                           : "bg-[#F4F1EA] border-[#1D3557]/15 hover:bg-[#E9C46A]"

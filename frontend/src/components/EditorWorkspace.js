@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Play, Square, RotateCcw, Gauge, AlertTriangle, Repeat, Shuffle, FileMusic } from "lucide-react";
+import { Play, Square, RotateCcw, Gauge, AlertTriangle, Repeat, Shuffle, FileMusic, ArrowLeftRight } from "lucide-react";
 import NoteEditor from "./NoteEditor";
 import TrackView from "./TrackView";
+import ComparePanel from "./ComparePanel";
 import { useMusicBox } from "../hooks/useMusicBox";
-import { countNotes, speedPct, grooveConflicts, chordConflicts, makePlayable, BTN_LIFT } from "../lib/fp";
+import { countNotes, speedPct, grooveConflicts, chordConflicts, makePlayable, diffPartitions, BTN_LIFT } from "../lib/fp";
 
 function Stat({ label, value, warn, testId }) {
   return (
@@ -15,11 +16,13 @@ function Stat({ label, value, warn, testId }) {
 }
 
 export default function EditorWorkspace({
-  sides, active, onActive, duration, revSeconds, onRevSeconds, loop, onLoop,
+  sides, active, onActive, duration, revSeconds, onRevSeconds, loop, onLoop, roll = "before",
 }) {
   const side = sides.find((s) => s.key === active) || sides[0];
   const [view, setView] = useState("pitch");
   const [fit, setFit] = useState(false);
+  const [compare, setCompare] = useState(false);
+  const [cue, setCue] = useState(null);
   const sequence = useMemo(() => sides.map((s) => s.partition), [sides]);
   const { playing, sideIdx, play, stop, getPos, tap } = useMusicBox(sequence, revSeconds, loop);
   const a = side.analysis;
@@ -29,6 +32,7 @@ export default function EditorWorkspace({
   const conflicts = useMemo(() => new Set([...repeats, ...chords]), [repeats, chords]);
   const clashCount = repeats.size;
   const chordCount = chords.size;
+  const ghosts = useMemo(() => diffPartitions(side.analysis.partition_midi, side.partition).moved, [side.analysis.partition_midi, side.partition]);
 
   useEffect(() => {
     if (playing && sides[sideIdx]) onActive(sides[sideIdx].key);
@@ -40,6 +44,8 @@ export default function EditorWorkspace({
     const p = getPos();
     return p && p.side === activeIdx ? p.beat : -1;
   };
+  const seek = (beat) => { setCue(beat); play({ side: activeIdx, beat }); };
+  const fix = () => side.onChange(makePlayable(side.partition, roll));
 
   return (
     <div className="flex flex-col h-full p-4 gap-3" data-testid="editor-workspace">
@@ -61,6 +67,15 @@ export default function EditorWorkspace({
         >
           {fit ? "FIT TO NOTES" : "ALL 86 BEATS"}
         </button>
+        {a.partition_midi && (
+          <button
+            type="button" data-testid="compare-toggle" onClick={() => setCompare(!compare)}
+            className={`font-sans font-black text-xs px-3 py-1.5 rounded-lg border-2 border-[#1D3557] flex items-center gap-1 ${compare ? "bg-[#1D3557] text-white" : "bg-white hover:bg-[#E9C46A]"}`}
+            title="Hear the MIDI slice next to the disc version"
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5" /> MIDI vs DISC
+          </button>
+        )}
         {sides.length > 1 && sides.map((s, i) => (
           <button
             key={s.key}
@@ -109,7 +124,7 @@ export default function EditorWorkspace({
         <p data-testid="chord-warning" className="font-mono text-[11px] text-[#1D3557] bg-[#FFB703] border-2 border-[#E63946] rounded-md px-2 py-1 flex items-center gap-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#E63946]" />
           {chordCount} highlighted note(s) share a beat with another note — the player plucks one tine at a time, so they must be offset (the originals always stagger them).
-          <button type="button" data-testid="auto-stagger-button" onClick={() => side.onChange(makePlayable(side.partition))}
+          <button type="button" data-testid="auto-stagger-button" onClick={fix}
             className="ml-auto font-sans font-black text-[11px] px-2 py-0.5 rounded border-2 border-[#1D3557] bg-[#1D3557] text-white flex items-center gap-1 whitespace-nowrap">
             <Shuffle className="h-3 w-3" /> MAKE PLAYABLE
           </button>
@@ -119,7 +134,7 @@ export default function EditorWorkspace({
         <p data-testid="repeat-warning" className="font-mono text-[11px] text-[#1D3557] bg-[#FFB703] border-2 border-[#E63946] rounded-md px-2 py-1 flex items-center gap-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#E63946]" />
           {clashCount} highlighted note(s) ask a single tine to strike on back-to-back beats — it is still pushed aside by the first pin, so the second can't sound. Twin tines (×2 rows) may repeat.
-          <button type="button" data-testid="make-playable-button" onClick={() => side.onChange(makePlayable(side.partition))}
+          <button type="button" data-testid="make-playable-button" onClick={fix}
             className="ml-auto font-sans font-black text-[11px] px-2 py-0.5 rounded border-2 border-[#1D3557] bg-[#1D3557] text-white flex items-center gap-1 whitespace-nowrap">
             <Shuffle className="h-3 w-3" /> MAKE PLAYABLE
           </button>
@@ -141,15 +156,21 @@ export default function EditorWorkspace({
               onTap={tap}
               conflicts={conflicts}
               fit={fit}
+              onSeek={seek}
+              cueBeat={cue}
+              ghosts={ghosts}
             />
           )}
         </div>
       </div>
+      {compare && a.partition_midi && (
+        <ComparePanel midi={a.partition_midi} disc={side.partition} revSeconds={revSeconds} />
+      )}
 
       <div className="flex flex-wrap items-center gap-3 border-t-2 border-[#1D3557]/20 pt-3">
         <button
           data-testid="play-button"
-          onClick={playing ? stop : play}
+          onClick={playing ? stop : () => play()}
           className={`font-sans font-black text-sm px-4 py-2 rounded-lg border-2 border-[#1D3557] flex items-center gap-2 shadow-[3px_3px_0_0_#1D3557] ${BTN_LIFT} ${
             playing ? "bg-[#1D3557] text-white" : "bg-[#2A9D8F] text-white"
           }`}
@@ -190,7 +211,7 @@ export default function EditorWorkspace({
         </label>
       </div>
       <p className="font-mono text-[10px] text-[#457B9D]">
-        click empty = add · click note = remove · drag note = nudge · row label = tine number(s) on the 22-tine comb · preview sounds at real toy pitch (A♭ major)
+        click empty = add · click note = remove · drag note = nudge · click the ruler = play from that beat · dashed cell = where the MIDI had a note before it was moved · preview sounds at real toy pitch (A♭ major)
       </p>
     </div>
   );
