@@ -1,5 +1,6 @@
 from fastapi import FastAPI, APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -7,7 +8,7 @@ import os
 import base64
 import logging
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
@@ -24,15 +25,23 @@ db = client[os.environ['DB_NAME']]
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
+MAX_UPLOAD = 2 * 1024 * 1024
+HIDDEN = {"_id": 0, "stl_b64": 0, "fpr": 0, "fpr_b": 0, "scad": 0}
+
+Partition = List[List[bool]]
+
 
 class ConversionSummary(BaseModel):
     id: str
     filename: str
     title: str
+    title_b: Optional[str] = None
+    two_sided: bool = False
     created_at: str
     note_count: int
     exact: int
     adjusted: int
+    merged: int = 0
     offset: int
     pin_count: int
     duration: float
@@ -40,11 +49,136 @@ class ConversionSummary(BaseModel):
     beats: int
     triangles: int
     notes_used: List[dict]
+    partition: Optional[Partition] = None
+    partition_b: Optional[Partition] = None
+
+
+class Analysis(BaseModel):
+    partition: Partition
+    offset: int
+    exact: int
+    adjusted: int
+    merged: int
+    note_count: int
+    notes_used: List[dict]
+    duration: float
+    start: float
+    beats: int
+
+
+class PressRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=40)
+    partition: Partition
+    partition_b: Optional[Partition] = None
+    title_b: Optional[str] = Field(None, max_length=40)
+    thickness: float = 3.0
+    engrave: bool = True
+    filename: str = "record.mid"
+    duration: float = 25.0
+    offset: int = 0
+    exact: int = 0
+    adjusted: int = 0
+    merged: int = 0
+
+
+def _check_partition(p: Optional[Partition], name: str):
+    if p is None:
+        return
+    if len(p) != fp.TONES_COUNT or any(len(r) != fp.MAX_BEAT for r in p):
+        raise HTTPException(400, f"{name} must be {fp.TONES_COUNT} x {fp.MAX_BEAT}")
+
+
+async def _read_midi(file: UploadFile) -> bytes:
+    if not file.filename.lower().endswith((".mid", ".midi")):
+        raise HTTPException(status_code=400, detail="Please upload a .mid or .midi file")
+    raw = await file.read()
+    if len(raw) > MAX_UPLOAD:
+        raise HTTPException(status_code=413, detail="MIDI file too large (max 2 MB)")
+    return raw
 
 
 @api_router.get("/")
 async def root():
     return {"message": "Fisher-Price Music Box Record Creator API"}
+
+
+@api_router.post("/analyze", response_model=Analysis)
+async def analyze(
+    file: UploadFile = File(...),
+    duration: float = Form(25.0),
+    start: float = Form(0.0),
+    auto_transpose: bool = Form(True),
+    manual_offset: int = Form(0),
+):
+    raw = await _read_midi(file)
+    try:
+        rec = await run_in_threadpool(
+            fp.analyze, raw,
+            duration=max(1.0, min(60.0, duration)),
+            start=max(0.0, start),
+            auto_transpose=auto_transpose,
+            manual_offset=manual_offset,
+        )
+    except Exception as e:
+        logging.exception("analysis failed")
+        raise HTTPException(status_code=422, detail=f"Could not read MIDI: {e}")
+    if rec["note_count"] == 0:
+        raise HTTPException(
+            status_code=422,
+            detail="No playable notes found in that part of the MIDI file.",
+        )
+    return rec
+
+
+async def _store(doc_id, filename, title, out, meta, title_b=None,
+                 partition=None, partition_b=None):
+    stats = out["stats"]
+    doc = {
+        "id": doc_id,
+        "filename": filename,
+        "title": title,
+        "title_b": title_b,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "stl_b64": base64.b64encode(out["stl"]).decode(),
+        "fpr": out["fpr"],
+        "fpr_b": out.get("fpr_b"),
+        "scad": out["scad"],
+        "partition": partition,
+        "partition_b": partition_b,
+        **meta,
+        **{k: stats[k] for k in ("pin_count", "thickness", "beats", "triangles",
+                                 "notes_used", "two_sided")},
+    }
+    await db.conversions.insert_one(doc)
+    for k in ("stl_b64", "fpr", "fpr_b", "scad", "_id"):
+        doc.pop(k, None)
+    return doc
+
+
+@api_router.post("/press", response_model=ConversionSummary)
+async def press(req: PressRequest):
+    _check_partition(req.partition, "partition")
+    _check_partition(req.partition_b, "partition_b")
+    if not any(any(r) for r in req.partition):
+        raise HTTPException(400, "Side A has no notes")
+    title_b = (req.title_b or "Side B")[:40] if req.partition_b is not None else None
+    try:
+        out = await run_in_threadpool(
+            fp.press, req.partition, req.title.strip(),
+            max(1.5, min(8.0, req.thickness)),
+            req.partition_b, title_b or "", req.engrave,
+        )
+    except Exception as e:
+        logging.exception("press failed")
+        raise HTTPException(status_code=422, detail=f"Could not build the disc: {e}")
+    meta = {
+        "note_count": sum(sum(r) for r in req.partition)
+        + (sum(sum(r) for r in req.partition_b) if req.partition_b else 0),
+        "exact": req.exact, "adjusted": req.adjusted, "merged": req.merged,
+        "offset": req.offset, "duration": req.duration,
+    }
+    return await _store(str(uuid.uuid4()), req.filename, req.title.strip(), out, meta,
+                        title_b, req.partition, req.partition_b)
 
 
 @api_router.post("/convert", response_model=ConversionSummary)
@@ -56,14 +190,11 @@ async def convert(
     manual_offset: int = Form(0),
     title: Optional[str] = Form(None),
 ):
-    if not file.filename.lower().endswith((".mid", ".midi")):
-        raise HTTPException(status_code=400, detail="Please upload a .mid or .midi file")
-
-    raw = await file.read()
+    raw = await _read_midi(file)
     disc_title = (title or Path(file.filename).stem)[:40]
     try:
-        out = fp.generate_stl(
-            raw,
+        out = await run_in_threadpool(
+            fp.generate_stl, raw,
             duration=max(1.0, min(60.0, duration)),
             thickness=max(1.5, min(8.0, thickness)),
             auto_transpose=auto_transpose,
@@ -80,39 +211,20 @@ async def convert(
             status_code=422,
             detail="No playable notes found in the first seconds of this MIDI file.",
         )
-
-    doc_id = str(uuid.uuid4())
-    doc = {
-        "id": doc_id,
-        "filename": file.filename,
-        "title": disc_title,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "stl_b64": base64.b64encode(out["stl"]).decode(),
-        "fpr": out["fpr"],
-        "scad": out["scad"],
-        **{k: stats[k] for k in (
-            "note_count", "exact", "adjusted", "offset", "pin_count",
-            "duration", "thickness", "beats", "triangles", "notes_used")},
-    }
-    await db.conversions.insert_one(doc)
-    for k in ("stl_b64", "fpr", "scad", "_id"):
-        doc.pop(k, None)
-    return doc
+    meta = {k: stats[k] for k in ("note_count", "exact", "adjusted", "merged",
+                                  "offset", "duration")}
+    return await _store(str(uuid.uuid4()), file.filename, disc_title, out, meta,
+                        partition=out["partition"])
 
 
 @api_router.get("/conversions", response_model=List[ConversionSummary])
 async def list_conversions():
-    docs = await db.conversions.find(
-        {}, {"_id": 0, "stl_b64": 0, "fpr": 0, "scad": 0}
-    ).sort("created_at", -1).to_list(50)
-    return docs
+    return await db.conversions.find({}, HIDDEN).sort("created_at", -1).to_list(50)
 
 
 @api_router.get("/conversions/{conversion_id}", response_model=ConversionSummary)
 async def get_conversion(conversion_id: str):
-    doc = await db.conversions.find_one(
-        {"id": conversion_id}, {"_id": 0, "stl_b64": 0, "fpr": 0, "scad": 0}
-    )
+    doc = await db.conversions.find_one({"id": conversion_id}, HIDDEN)
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     return doc
@@ -122,11 +234,16 @@ def _safe_name(doc, default="record"):
     return "".join(c for c in doc.get("title", default) if c.isalnum() or c in "-_") or default
 
 
+async def _file_doc(conversion_id: str, field: str):
+    doc = await db.conversions.find_one({"id": conversion_id}, {"_id": 0, field: 1, "title": 1})
+    if not doc or not doc.get(field):
+        raise HTTPException(status_code=404, detail="Not found")
+    return doc
+
+
 @api_router.get("/conversions/{conversion_id}/stl")
 async def download_stl(conversion_id: str):
-    doc = await db.conversions.find_one({"id": conversion_id}, {"_id": 0, "stl_b64": 1, "title": 1})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
+    doc = await _file_doc(conversion_id, "stl_b64")
     return Response(
         content=base64.b64decode(doc["stl_b64"]),
         media_type="model/stl",
@@ -136,9 +253,7 @@ async def download_stl(conversion_id: str):
 
 @api_router.get("/conversions/{conversion_id}/scad")
 async def download_scad(conversion_id: str):
-    doc = await db.conversions.find_one({"id": conversion_id}, {"_id": 0, "scad": 1, "title": 1})
-    if not doc or "scad" not in doc:
-        raise HTTPException(status_code=404, detail="Not found")
+    doc = await _file_doc(conversion_id, "scad")
     return Response(
         content=doc["scad"],
         media_type="text/plain",
@@ -147,14 +262,14 @@ async def download_scad(conversion_id: str):
 
 
 @api_router.get("/conversions/{conversion_id}/fpr")
-async def download_fpr(conversion_id: str):
-    doc = await db.conversions.find_one({"id": conversion_id}, {"_id": 0, "fpr": 1, "title": 1})
-    if not doc or "fpr" not in doc:
-        raise HTTPException(status_code=404, detail="Not found")
+async def download_fpr(conversion_id: str, side: str = "a"):
+    field = "fpr_b" if side.lower() == "b" else "fpr"
+    doc = await _file_doc(conversion_id, field)
+    suffix = "-sideB" if field == "fpr_b" else ""
     return Response(
-        content=doc["fpr"],
+        content=doc[field],
         media_type="text/plain",
-        headers={"Content-Disposition": f'attachment; filename="{_safe_name(doc)}.fpr"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_name(doc)}{suffix}.fpr"'},
     )
 
 
