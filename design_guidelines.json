@@ -1,0 +1,101 @@
+{
+  "theme": "light",
+  "project_vibe": "Nostalgic 1970s Toy meets Modern Maker/Blueprint Tool. Playful yet precise. Tactile, chunky, and structurally sound.",
+  "typography": {
+    "headings": {
+      "fontFamily": "Outfit, sans-serif",
+      "weights": ["800", "900"],
+      "usage": "Bold, chunky, oversized headings reminiscent of 1970s plastic toy packaging. NEVER use generic fonts like Inter.",
+      "classes": "font-sans font-black tracking-tighter"
+    },
+    "body_and_technical": {
+      "fontFamily": "JetBrains Mono, monospace",
+      "weights": ["400", "500", "700"],
+      "usage": "Used for all technical data, warnings, note mappings, and file information. Creates the contrast of a 'maker blueprint'.",
+      "classes": "font-mono tracking-tight"
+    },
+    "setup_instructions": "Add Google Fonts imports for 'Outfit' and 'JetBrains Mono' to index.css."
+  },
+  "colors": {
+    "background": "#F4F1EA",
+    "surface": "#FFFFFF",
+    "primary": "#E63946",
+    "primary_hover": "#D62828",
+    "secondary": "#E9C46A",
+    "accent": "#457B9D",
+    "text_main": "#1D3557",
+    "text_muted": "#457B9D",
+    "border": "#1D3557",
+    "success": "#2A9D8F",
+    "warning": "#F4A261",
+    "error": "#E63946",
+    "notes": "Colors are inspired by 1970s Fisher-Price plastics (Red, Mustard) combined with blueprint inks (Navy, Steel Blue)."
+  },
+  "visual_enhancers": {
+    "surfaces": {
+      "style": "Tactile Brutalism",
+      "description": "Containers, buttons, and form inputs must look physical and chunky.",
+      "classes": "bg-white border-2 border-[#1D3557] shadow-[4px_4px_0_0_#1D3557] rounded-xl",
+      "hover_classes": "hover:-translate-y-1 hover:shadow-[6px_6px_0_0_#1D3557] transition-all duration-200"
+    },
+    "textures": {
+      "background": "Use a subtle SVG noise/grain overlay on the main background to simulate matte plastic/paper texture."
+    }
+  },
+  "layouts": {
+    "strategy": "The 'Tetris' Bento Grid Mode",
+    "description": "High-tension, asymmetrical grid. No generic centered 'SaaS' containers. The layout should look like a mechanical workshop station.",
+    "grid_classes": "grid grid-cols-1 md:grid-cols-12 gap-6 p-6 md:p-12",
+    "regions": {
+      "header": "col-span-12 flex justify-between items-end border-b-4 border-[#1D3557] pb-6 mb-8",
+      "viewer_3d": "col-span-12 lg:col-span-8 bg-[#F4F1EA] border-2 border-[#1D3557] shadow-inner rounded-2xl overflow-hidden min-h-[60vh] relative",
+      "controls_sidebar": "col-span-12 lg:col-span-4 flex flex-col gap-6",
+      "warnings_panel": "col-span-12 bg-[#FFB703] border-2 border-[#1D3557] shadow-[4px_4px_0_0_#1D3557] rounded-xl p-6 font-mono text-sm"
+    }
+  },
+  "3d_libraries": {
+    "engine": "react-three-fiber, @react-three/drei",
+    "strategy": "The 3D viewer is the hero of the app. It must be interactive (OrbitControls) and tactile.",
+    "lighting": "Use a mix of AmbientLight (intensity: 0.5) and DirectionalLight (intensity: 1, position: [5, 5, 5]) with castShadow to highlight the raised bumps (notes) on the record.",
+    "material": "Use meshStandardMaterial for the record. Color: '#E63946' (Plastic Red). Roughness: 0.3, Metalness: 0.1 to give it a manufactured, injection-molded plastic sheen."
+  },
+  "component_instructions": {
+    "buttons": "Must be extremely chunky. Use the visual_enhancers surface classes. Action buttons (Download STL) should be Primary color. Secondary buttons (Upload MIDI) should be Mustard or White.",
+    "file_upload": "Drag and drop zone should be a dashed box with thick borders (border-4 border-dashed border-[#457B9D] bg-white p-12 text-center).",
+    "warnings_list": "List missing/unmappable notes in a strict technical monospace layout, aligned left. Use small badges for note names.",
+    "toggle_switches": "Replace generic checkboxes with chunky custom toggle switches mimicking physical toy switches.",
+    "shadcn_overrides": "When using Shadcn UI (e.g., Sliders for repeats), override their delicate Vercel aesthetics with thick 2px borders, deep navy colors, and large thumb controls."
+  },
+  "motion": {
+    "interactions": "Physical 'snap' animations. Buttons should press down slightly on active: active:translate-y-1 active:shadow-[2px_2px_0_0_#1D3557].",
+    "transitions": "Use specific properties (transition: transform 0.15s ease-out, box-shadow 0.15s ease-out). DO NOT use 'transition-all' universally."
+  },
+  "accessibility": {
+    "contrast": "All text against the off-white or white backgrounds must use #1D3557 to easily pass WCAG AA/AAA. Warnings on Mustard use #1D3557.",
+    "data_testid": "MANDATORY. Every button, input, toggle, and key section must have a data-testid. Examples: 'midi-upload-zone', 'download-stl-button', 'transpose-toggle'."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "url": "https://images.unsplash.com/photo-1485726696757-76885c99f0f5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1Mjh8MHwxfHNlYXJjaHwyfHx2aW50YWdlJTIwcmVjb3JkJTIwcGxheWVyfGVufDB8fHx8MTc5MTg1Njk5Nnww&ixlib=rb-4.1.0&q=85",
+        "category": "empty_state",
+        "description": "Vintage record player. Use in the upload area or empty state as a nostalgic background image (with heavy opacity reduction: opacity-20 blend-multiply)."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1642969164999-979483e21601?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNTl8MHwxfHNlYXJjaHwxfHwzZCUyMHByaW50ZXIlMjBwcmludGluZyUyMG1hY3JvfGVufDB8fHx8MTc5MTg1Njk5N3ww&ixlib=rb-4.1.0&q=85",
+        "category": "loading_state",
+        "description": "Macro shot of a 3D printer. Use for the loading/processing screen while the STL is being generated."
+      }
+    ]
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "CRITICAL: Write all React components in .js files, NOT .tsx files. Use standard JSX syntax.",
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Do not make generic centered layouts, simplistic gradients, and uniform styling. Embrace asymmetry and chunky geometry.",
+    "You MUST NOT apply universal transition. Eg: transition: all. Always add transitions for specific interactive elements.",
+    "You MUST NOT center align the app container, i.e., do not add .App { text-align: center; }.",
+    "NEVER use AI assistant Emoji characters like \ud83e\udd16\ud83e\udde0\ud83d\udcad\ud83d\udca1 for icons. Use lucide-react or phosphor-icons.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Always apply 'data-testid' to interactive elements for testing."
+  ]
+}

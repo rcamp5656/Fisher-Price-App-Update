@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    margin: 0;
+    font-family: 'Outfit', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: #F4F1EA;
+}
+
+code {
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* subtle matte-plastic grain */
+.fp-grain {
+    position: relative;
+}
+.fp-grain::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.04;
+    z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.fp-grain > * {
+    position: relative;
+    z-index: 1;
+}
+
+@layer base {
+    :root {
+        --background: 40 33% 94%;
+        --foreground: 213 48% 23%;
+        --card: 0 0% 100%;
+        --card-foreground: 213 48% 23%;
+        --primary: 355 78% 56%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 42 74% 66%;
+        --secondary-foreground: 213 48% 23%;
+        --muted: 40 33% 94%;
+        --muted-foreground: 203 39% 44%;
+        --accent: 203 39% 44%;
+        --accent-foreground: 0 0% 100%;
+        --destructive: 355 78% 56%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 213 48% 23%;
+        --input: 213 48% 23%;
+        --ring: 203 39% 44%;
+        --radius: 0.75rem;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+}
