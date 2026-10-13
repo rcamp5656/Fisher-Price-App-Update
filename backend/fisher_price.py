@@ -345,7 +345,7 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
                      auto_transpose: bool = True,
                      manual_offset: int = 0,
                      comb: Comb = DEFAULT_COMB,
-                     stagger: bool = True, roll: str = "before") -> Dict:
+                     stagger: bool = True, roll: str = "before", voices: int = 16) -> Dict:
     """Quantize note events onto a tones x MAX_BEAT grid. The player can only
     pluck one tine per beat, so simultaneous notes are staggered onto the
     nearest free beat (like the factory records)."""
@@ -382,8 +382,14 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
         used.add(snapped)
 
     partition_midi = [list(r) for r in partition]
-    staggered += stagger_partition(partition, comb, roll) if stagger else 0
-    slid, dropped = make_playable(partition, comb)
+    if stagger:
+        staggered += stagger_partition(partition, comb, roll)
+        dropped = 0
+    else:
+        moved, dropped = limit_voices(partition, voices, comb, roll)
+        staggered += moved
+    slid, dropped2 = make_playable(partition, comb)
+    dropped += dropped2
     staggered += slid
 
     return {
@@ -453,7 +459,7 @@ def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
              comb: Comb = DEFAULT_COMB, roll: str = "before", auto_transpose: bool = True,
              manual_offset: int = 0, max_tries: int = 12000, tempo_range: float = 0.35,
              nudge: float = 0.5, tracks: Optional[List[int]] = None, skyline: bool = False,
-             melody_fill: bool = False, chords: bool = False) -> Dict:
+             melody_fill: bool = False, chords: bool = False, voices: int = 16) -> Dict:
     """Re-map the MIDI slice onto the 86-beat disc up to `max_tries` ways —
     varying how many MIDI seconds fill one revolution (tempo within
     ±tempo_range) and a fine shift of the window start (±nudge s) — comparing
@@ -503,7 +509,7 @@ def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
         delta, dur = float(delta), float(dur)
         off = offset if off is None else off
         ev = [(t - delta, n) for t, n in all_events if 0 <= t - delta < dur]
-        rec = events_to_record(ev, dur, False, off, comb, stagger=not chords, roll=roll)
+        rec = events_to_record(ev, dur, False, off, comb, stagger=not chords, roll=roll, voices=voices)
         fit = compare_fit(ev, off, rec["partition"], dur, rev_seconds, comb)
         return fit["score"], delta, dur, rec, fit, ev
 
@@ -583,7 +589,7 @@ def _nearest_free(partition: List[List[bool]], tone: int, b: int, comb: Comb, mo
     return None
 
 
-def _slide(partition: List[List[bool]], tone: int, b: int, comb: Comb, prefer: int) -> bool:
+def _slide(partition: List[List[bool]], tone: int, b: int, comb: Comb, prefer: int, mono: bool = True) -> bool:
     """Move the pin at (tone, b) to the nearest free beat, leaning `prefer`
     direction for the first LEAN_BEATS. Returns False only on a full disc."""
     beats = len(partition[0])
@@ -592,10 +598,49 @@ def _slide(partition: List[List[bool]], tone: int, b: int, comb: Comb, prefer: i
     cands += [x for d in range(LEAN_BEATS, beats) for x in (b + prefer * d, b - prefer * d)]
     cands += [b - prefer * d for d in range(1, LEAN_BEATS)]
     for nb in cands:
-        if 0 <= nb < beats and _can_place(partition, tone, nb, comb):
+        if 0 <= nb < beats and _can_place(partition, tone, nb, comb, mono):
             partition[tone][nb] = True
             return True
     return False
+
+
+def limit_voices(partition: List[List[bool]], voices: int, comb: Comb = DEFAULT_COMB,
+                 roll: str = "before", reach: int = 4) -> Tuple[int, int]:
+    """Simple chords: keep at most `voices` tines per beat — the top (melody)
+    note first, then the bottom, then the middle. Extra notes roll to a beat
+    within `reach` that still has room; if none has, they are dropped.
+    Returns (moved, dropped)."""
+    beats = len(partition[0])
+    prefer = 1 if roll == "after" else -1
+    load = [sum(row[b] for row in partition) for b in range(beats)]
+    moved = dropped = 0
+    for b in range(beats):
+        hits = [t for t in range(len(partition)) if partition[t][b]]
+        if len(hits) <= voices:
+            continue
+        keep = [hits[-1]] + ([hits[0]] if voices >= 2 else [])
+        mids = sorted(hits[1:-1], key=lambda t: abs(t - (hits[0] + hits[-1]) / 2))
+        keep = set(keep + mids[: max(0, voices - 2)])
+        for t in hits:
+            if t in keep:
+                continue
+            partition[t][b] = False
+            load[b] -= 1
+            placed = False
+            for d in range(1, reach + 1):
+                for nb in (b + prefer * d, b - prefer * d):
+                    if 0 <= nb < beats and load[nb] < voices and _can_place(partition, t, nb, comb, mono=False):
+                        partition[t][nb] = True
+                        load[nb] += 1
+                        placed = True
+                        break
+                if placed:
+                    break
+            if placed:
+                moved += 1
+            else:
+                dropped += 1
+    return moved, dropped
 
 
 def stagger_partition(partition: List[List[bool]], comb: Comb = DEFAULT_COMB,
@@ -1090,10 +1135,10 @@ def analyze(midi_bytes: bytes, duration: float = 25.0, start: float = 0.0,
             auto_transpose: bool = True, manual_offset: int = 0,
             comb: Comb = DEFAULT_COMB, roll: str = "before", rev_seconds: float = 25.0,
             tracks: Optional[List[int]] = None, skyline: bool = False, melody_fill: bool = False,
-            chords: bool = False) -> Dict:
+            chords: bool = False, voices: int = 16) -> Dict:
     """MIDI window -> editable pitch x 86 partition plus mapping stats."""
     events = parse_midi_events(midi_bytes, duration, start, tracks, skyline, melody_fill)
-    rec = events_to_record(events, duration, auto_transpose, manual_offset, comb, stagger=not chords, roll=roll)
+    rec = events_to_record(events, duration, auto_transpose, manual_offset, comb, stagger=not chords, roll=roll, voices=voices)
     rec["events"] = [[round(t, 3), n] for t, n in sorted(events)]
     rec["fit"] = compare_fit(events, rec["offset"], rec["partition"], duration, rev_seconds, comb) if events else None
     return _finish_analysis(rec, duration, start)
@@ -1105,7 +1150,7 @@ RENDER_RATE = 8000       # review audio: 8 kHz mono, like the toy's own tinny vo
 
 def plan_song(midi_bytes: bytes, comb: Comb, tracks: Optional[List[int]], skyline: bool,
               duration: float, rev_seconds: float, roll: str, auto_transpose: bool,
-              manual_offset: int, melody_fill: bool = False, chords: bool = False) -> Dict:
+              manual_offset: int, melody_fill: bool = False, chords: bool = False, voices: int = 16) -> Dict:
     """Slice the whole song (selected tracks) into consecutive 86-beat sides
     with one transposition and one tempo. duration <= 0 auto-fits the tempo."""
     allev = parse_midi_events(midi_bytes, 36000.0, 0.0, tracks, skyline, melody_fill)
@@ -1115,12 +1160,12 @@ def plan_song(midi_bytes: bytes, comb: Comb, tracks: Optional[List[int]], skylin
     start, fit = max(0.0, first - 0.2), None
     if duration <= 0:
         rec = auto_fit(midi_bytes, start, rev_seconds, comb, roll, auto_transpose, manual_offset,
-                       12000, 0.35, 0.5, tracks, skyline, melody_fill, chords)
+                       12000, 0.35, 0.5, tracks, skyline, melody_fill, chords, voices)
         fit, duration, start = rec["fit"], rec["fit"]["duration"], rec["fit"]["start"]
     offset = (fit["offset"] if fit else choose_transposition([n for _, n in allev], comb)) if auto_transpose else manual_offset
     n_sides = max(1, math.ceil((last - start + 0.01) / duration))
     sides = [analyze(midi_bytes, duration, start + k * duration, False, offset, comb, roll, rev_seconds,
-                     tracks, skyline, melody_fill, chords) for k in range(n_sides)]
+                     tracks, skyline, melody_fill, chords, voices) for k in range(n_sides)]
     return {"sides": sides, "duration": duration, "start": start, "offset": offset, "fit": fit,
             "note_count": sum(s["note_count"] for s in sides)}
 
@@ -1224,14 +1269,14 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
           partition_b: List[List[bool]] = None, title_b: str = "",
           engrave: bool = True, record_no: int = 6, comb: Comb = DEFAULT_COMB,
           overrides: Dict = None, overrides_b: Dict = None,
-          pin_radius: float = R_PIN, roll: str = "before", chords: bool = False) -> Dict:
+          pin_radius: float = R_PIN, roll: str = "before", chords: bool = False, voices: int = 16) -> Dict:
     """Partition(s) -> STL / SCAD / FPR files. Two-sided discs also get two
     flat-backed halves to print pins-up and glue back to back (no supports)."""
     label_a = title if engrave else ""
     label_b = title_b if engrave else ""
-    toy_fixes = (0 if chords else stagger_partition(partition, comb, roll)) + sum(make_playable(partition, comb))
+    toy_fixes = (sum(limit_voices(partition, voices, comb, roll)) if chords else stagger_partition(partition, comb, roll)) + sum(make_playable(partition, comb))
     if partition_b is not None:
-        toy_fixes += (0 if chords else stagger_partition(partition_b, comb, roll)) + sum(make_playable(partition_b, comb))
+        toy_fixes += (sum(limit_voices(partition_b, voices, comb, roll)) if chords else stagger_partition(partition_b, comb, roll)) + sum(make_playable(partition_b, comb))
     common = dict(marks=engrave, record_no=record_no, comb=comb, pin_radius=pin_radius)
     mesh, pin_count = build_mesh(partition, thickness, label_a, partition_b, label_b,
                                  overrides=overrides, overrides_b=overrides_b, **common)

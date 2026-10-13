@@ -119,17 +119,29 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <label className="font-mono text-sm flex items-center gap-2" title="Experimental: put pins on the same beat in different grooves so several tines pluck together. The factory records never do this — try it and listen.">
-          <Layers className="h-4 w-4" /> Let the box try chords
-        </label>
-        <Toggle checked={!!s.chords} onChange={(v) => set({ chords: v })} testId="chords-toggle" />
-      </div>
-      {s.chords && (
-        <p className="font-mono text-[10px] text-[#E63946] -mt-2" data-testid="chords-hint">
-          Experimental — notes on the same beat are kept as chords instead of rolled. Single tines still get their rest beat.
+      <div>
+        <label className="font-mono text-sm flex items-center gap-2 mb-1"><Layers className="h-4 w-4" /> Notes at once (22 tines)</label>
+        <div className="grid grid-cols-4 gap-1">
+          {[[1, "ONE"], [2, "TWO"], [3, "THREE"], [16, "ALL"]].map(([v, l]) => (
+            <button
+              key={v} type="button" data-testid={`voices-${v}`}
+              onClick={() => set({ voices: v, chords: v > 1 })}
+              className={`font-sans font-bold text-xs py-2 rounded-md border-2 border-[#1D3557] ${
+                (s.voices || 1) === v ? "bg-[#1D3557] text-white" : "bg-white hover:bg-[#E9C46A]"
+              }`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        <p className="font-mono text-[10px] text-[#457B9D] mt-1" data-testid="voices-hint">
+          {(s.voices || 1) === 1
+            ? "Factory style — one tine per beat, chords are rolled."
+            : (s.voices || 1) >= 16
+              ? "Experimental — every note stays on its beat; dense mixes may jam the comb."
+              : `Simple chords — up to ${s.voices} tines pluck together on a beat (melody kept on top, then the bass note). Extra notes roll to a nearby beat with room. Print it and listen!`}
         </p>
-      )}
+      </div>
 
       <div>
         <label className="font-mono text-sm flex items-center gap-2 mb-1"><Layers className="h-4 w-4" /> Chord roll direction</label>

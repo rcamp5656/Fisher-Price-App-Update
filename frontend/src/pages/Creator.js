@@ -27,7 +27,7 @@ const emptyAnalysis = () => ({
 const DEFAULTS = {
   title: "", titleB: "", thickness: 3.0, duration: TOY_REV_SECONDS, autoTranspose: true,
   manualOffset: 0, twoSided: false, sideMode: "continue", engrave: true, recordNo: "", nextNo: null,
-  pinRadius: 0.8, roll: "before", autoFit: true, chords: false,
+  pinRadius: 0.8, roll: "before", autoFit: true, chords: false, voices: 1,
 };
 
 export default function Creator() {
@@ -106,7 +106,7 @@ export default function Creator() {
     if (skipStale.current) { skipStale.current = false; return; }
     if (analysis) setStale(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files.a, files.b, starts.a, starts.b, s.duration, s.autoTranspose, s.manualOffset, s.twoSided, s.sideMode, s.roll, s.autoFit, s.chords, tracks.a, tracks.b, skyline, melodyFill, combVersion]);
+  }, [files.a, files.b, starts.a, starts.b, s.duration, s.autoTranspose, s.manualOffset, s.twoSided, s.sideMode, s.roll, s.autoFit, s.voices, tracks.a, tracks.b, skyline, melodyFill, combVersion]);
 
   const scanFile = async (key, f) => {
     const form = new FormData();
@@ -137,7 +137,8 @@ export default function Creator() {
     form.append("tracks", (sel || []).join(","));
     form.append("skyline", String(skyline));
     form.append("melody_fill", String(melodyFill && !!(sel && sel.length)));
-    form.append("chords", String(!!s.chords));
+    form.append("chords", String(s.voices > 1));
+    form.append("voices", String(s.voices));
     form.append("duration", String(duration));
     form.append("start", String(start));
     form.append("auto_transpose", String(s.autoTranspose));
@@ -238,7 +239,8 @@ export default function Creator() {
         roll: s.roll,
         tracks: tracks.a,
         skyline,
-        chords: s.chords,
+        chords: s.voices > 1,
+        voices: s.voices,
       });
       setResult(data); setTab("preview"); loadHistory();
       if (data.partition) setParts({ a: data.partition, b: data.partition_b || null });
@@ -317,7 +319,7 @@ export default function Creator() {
               <EditorWorkspace
                 sides={sides} active={active} onActive={setActive}
                 duration={s.duration} revSeconds={revSeconds} onRevSeconds={setRevSeconds}
-                loop={loop} onLoop={setLoop} roll={s.roll} allowChords={s.chords}
+                loop={loop} onLoop={setLoop} roll={s.roll} voices={s.voices}
               />
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">

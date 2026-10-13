@@ -16,8 +16,9 @@ function Stat({ label, value, warn, testId }) {
 }
 
 export default function EditorWorkspace({
-  sides, active, onActive, duration, revSeconds, onRevSeconds, loop, onLoop, roll = "before", allowChords = false,
+  sides, active, onActive, duration, revSeconds, onRevSeconds, loop, onLoop, roll = "before", voices = 1,
 }) {
+  const allowChords = voices > 1;
   const side = sides.find((s) => s.key === active) || sides[0];
   const [view, setView] = useState("pitch");
   const [fit, setFit] = useState(false);
@@ -28,7 +29,7 @@ export default function EditorWorkspace({
   const a = side.analysis;
   const pct = speedPct(duration, revSeconds);
   const repeats = useMemo(() => grooveConflicts(side.partition), [side.partition]);
-  const chords = useMemo(() => (allowChords ? new Set() : chordConflicts(side.partition)), [side.partition, allowChords]);
+  const chords = useMemo(() => (voices >= 16 ? new Set() : chordConflicts(side.partition, voices)), [side.partition, voices]);
   const conflicts = useMemo(() => new Set([...repeats, ...chords]), [repeats, chords]);
   const clashCount = repeats.size;
   const chordCount = chords.size;

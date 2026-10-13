@@ -49,12 +49,12 @@ export const repeatConflicts = (p) => {
   return s;
 };
 // two notes on the same beat — the player plucks one tine at a time
-export const chordConflicts = (p) => {
+export const chordConflicts = (p, voices = 1) => {
   const s = new Set();
   for (let b = 0; b < MAX_BEAT; b++) {
     const tones = [];
     p.forEach((row, tone) => { if (row[b]) tones.push(tone); });
-    if (tones.length > 1) tones.forEach((t) => s.add(`${t}-${b}`));
+    if (tones.length > voices) tones.forEach((t) => s.add(`${t}-${b}`));
   }
   return s;
 };

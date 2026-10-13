@@ -1,0 +1,26 @@
+{
+  "summary": "Iter17 verifies the stagger-instead-of-merge fix in fisher_price.events_to_record (user bug: 4904 merged collapsing dense same-pitch notes). Backend: 120/120 pytest green (115 regression + 5 new iter17). New asserts (test_iter17_stagger_not_merge.py): (1) MIDI with pitch 72 x 4 within 0.1 s at t=5s / dur=25 / auto_transpose=false => merged=0, note_count=4, 4 pins on distinct beats, staggered>=3, dropped=0, max 1 pin/beat. (2) 250 same-pitch notes every 0.1 s => pins<=86, pins+merged+dropped==250, staggered>0, max 1 pin/beat. (3) baby1.mid start=18.7 dur=25 tracks='' skyline=true => merged<note_count/2, pins>=80. (4) baby1.mid same slice with chords=true (no skyline) => pins>300, pins+merged+dropped==note_count. (5) baby1.mid tracks='5' (melody only) => merged=0, dropped=0. FRONTEND (public URL baby1.mid, 1920x1080): upload => track-mono-mix => LOAD NOTES => stat-notes=86, stat-lost ('No room')=8 (numeric, visible), stat-staggered=132 (>0), stat-chords=0, zero console errors. Then track-auto-melody => LOAD NOTES => stat-notes=58, stat-lost=0. All assertions pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter17_stagger_not_merge.py",
+    "/app/test_reports/pytest/iter17.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "fisher_price.py is now 1356 lines — well above the 700-line split threshold. Suggest splitting partition/stagger logic (events_to_record, _can_place, _nearest_free, _slide, stagger_partition, make_playable) into a dedicated partition.py module; melody selection into melody.py; and auto-fit/transposition scoring into fit.py. Will dramatically improve maintainability and testability.",
+    "events_to_record counts `staggered` from three independent sources (initial collision stagger, stagger_partition, make_playable 'slid'). This conflates two user-facing concepts: 'same pitch collision moved' vs. 'chord rolled'. Consider separate counters so the editor can display them distinctly if the UX wants that fidelity.",
+    "_nearest_free prefers `b + d` over `b - d` for the same distance (later first), which matches the spec. However the second pass in stagger_partition also leans by `roll` direction — order of fallback is subtle; a short comment near the call-site would help future readers.",
+    "`merged` is semantically 'no room' now (shown as 'No room' in UI). The internal field name is misleading — nothing is actually merged. Suggest renaming to `lost` or `no_room` in the API response (keep backward alias) and in the function."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter17_stagger_not_merge.py (new; 5 tests)"
+  ],
+  "success_rate": {"backend": "100% (120/120 pytest)", "frontend": "100% of iter17 assertions, 0 console errors"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "Two transient MIDI files built with mido in pytest tmp_path: (a) 4 same-pitch notes within 0.1 s at t=5 s, (b) 250 same-pitch notes every 0.1 s. Nothing persisted.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter17: events_to_record now routes same-pitch collisions through _nearest_free (reach +/-8, later-first) honoring _can_place (one pin per beat in mono, per-tine gap). `merged` is incremented only when no free beat exists in the reach window (shown as 'No room' / stat-lost in editor). On baby1.mid full slice start=18.7 dur=25 tracks='' skyline=true the disc fills to >=80 pins with staggered>>0 and merged<note_count/2. With chords=true (no skyline) baby1 produces >300 pins and pins+merged+dropped==note_count. baby1 tracks='5' melody-only is clean (merged=0, dropped=0). Public URL baby1 mono-mix editor shows stat-notes=86, stat-lost=8, stat-staggered=132, stat-chords=0; auto-melody shows stat-notes=58, stat-lost=0. No new API fields; `staggered` and `merged` in the analyze stats block are the ones to assert.",
+  "rca of the issue": "Not a bug this iteration — regression + feature-coverage pass validating the stagger-vs-merge fix in events_to_record. Previous behaviour summed every same-pitch collision into `merged` (e.g. 4904 lost on dense inputs); the fix calls _nearest_free(mono=True) first, so collisions become `staggered` (counted and visible) and `merged` only fires when the +/-8 beat window is saturated. All six requested backend scenarios and both requested frontend scenarios reproduce the expected numbers."
+}

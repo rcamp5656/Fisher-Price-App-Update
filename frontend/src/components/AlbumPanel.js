@@ -28,7 +28,8 @@ export default function AlbumPanel({ api, file, settings, tracks, skyline, melod
     form.append("tracks", (tracks || []).join(","));
     form.append("skyline", String(!!skyline));
     form.append("melody_fill", String(!!melodyFill && !!(tracks && tracks.length)));
-    form.append("chords", String(!!settings.chords));
+    form.append("chords", String(settings.voices > 1));
+    form.append("voices", String(settings.voices || 1));
     form.append("duration", String(settings.autoFit ? 0 : settings.duration));
     form.append("rev_seconds", String(revSeconds));
     form.append("two_sided", String(!!settings.twoSided));
