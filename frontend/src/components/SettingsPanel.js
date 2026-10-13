@@ -32,7 +32,7 @@ function Row({ icon: Icon, label, value, testId }) {
   );
 }
 
-export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart, fit }) {
+export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart, fit, api }) {
   const pct = speedPct(s.duration, revSeconds);
   return (
     <div className="flex flex-col gap-4">
@@ -258,8 +258,13 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
             <button
               key={v} type="button" data-testid={`ded-font-${v}`} title={hint}
               onClick={() => set({ dedFont: v })}
-              className={`font-sans font-bold text-xs py-1.5 rounded-md border-2 border-[#1D3557] ${(s.dedFont || "bold") === v ? "bg-[#1D3557] text-white" : "bg-white hover:bg-[#E9C46A]"}`}
+              className={`font-sans font-bold text-xs py-1.5 rounded-md border-2 border-[#1D3557] flex flex-col items-center gap-1 ${(s.dedFont || "bold") === v ? "bg-[#1D3557] text-white" : "bg-white hover:bg-[#E9C46A]"}`}
             >
+              <img
+                data-testid={`ded-font-preview-${v}`} alt={`${l} dedication preview`}
+                src={`${api}/label-preview.svg?font=${v}&height=${s.dedHeight ?? 2.4}`}
+                className="w-full aspect-square rounded-full bg-[#B9A9E3]"
+              />
               {l}
             </button>
           ))}

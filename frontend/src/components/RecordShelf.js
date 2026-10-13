@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { Library, Plus } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import BackupButton from "./BackupButton";
+import { Library, Plus, Search } from "lucide-react";
 import { CARD } from "../lib/fp";
 
 const FIRST = 6;
@@ -8,8 +9,14 @@ export const ALBUM_COLOURS = ["#E63946", "#2A9D8F", "#FFB703", "#457B9D", "#8E44
 export const albumColour = (h) => ALBUM_COLOURS[((h.album_index || 1) - 1) % ALBUM_COLOURS.length];
 
 // Every record number from #1 up — factory 1-5, then your pressings; gaps are clickable
-export default function RecordShelf({ history, onGap, onOpen, current }) {
+export default function RecordShelf({ history, onGap, onOpen, current, api }) {
   const [focus, setFocus] = useState(null);   // album_id to spotlight; others dim
+  const [q, setQ] = useState("");
+  const firstHit = useRef(null);
+  const needle = q.trim().toLowerCase();
+  const hit = (h) => !!h && (!needle || String(h.record_no) === needle.replace(/^#/, "") || `${h.title} ${h.title_b || ""}`.toLowerCase().includes(needle));
+  const hits = history.filter(hit).length;
+  useEffect(() => { if (needle && firstHit.current) firstHit.current.scrollIntoView({ behavior: "smooth", block: "center" }); }, [needle, hits]);
   const byNo = new Map();
   history.forEach((h) => { if (h.record_no != null && !byNo.has(h.record_no)) byNo.set(h.record_no, h); });
   // albums: discs sharing album_id, in play order; the disc after the one that is open is "next"
@@ -24,11 +31,24 @@ export default function RecordShelf({ history, onGap, onOpen, current }) {
   const slots = Array.from({ length: max }, (_, i) => i + 1);
   const gaps = slots.filter((n) => n >= FIRST && !byNo.has(n)).length;
 
+  const firstHitNo = needle ? slots.find((n) => hit(byNo.get(n))) : null;
   return (
     <div data-testid="record-shelf" className={`${CARD} p-6 col-span-12`}>
-      <h3 className="font-sans font-black text-xl tracking-tight flex items-center gap-2 mb-1">
-        <Library className="h-5 w-5" /> RECORD SHELF
-      </h3>
+      <div className="flex flex-wrap items-center gap-3 mb-1">
+        <h3 className="font-sans font-black text-xl tracking-tight flex items-center gap-2">
+          <Library className="h-5 w-5" /> RECORD SHELF
+        </h3>
+        <label className="flex items-center gap-1 font-mono text-xs border-2 border-[#1D3557] rounded-md px-2 py-1 bg-white">
+          <Search className="h-3.5 w-3.5" />
+          <input
+            data-testid="shelf-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="title or #number"
+            onKeyDown={(e) => { if (e.key === "Enter") { const h = history.find(hit); if (h) onOpen(h); } if (e.key === "Escape") setQ(""); }}
+            className="bg-transparent outline-none w-40"
+          />
+          {needle && <span data-testid="shelf-search-count" className={`font-bold ${hits ? "text-[#2A9D8F]" : "text-[#E63946]"}`}>{hits} hit{hits === 1 ? "" : "s"}</span>}
+        </label>
+        {api && <span className="ml-auto"><BackupButton api={api} /></span>}
+      </div>
       <p className="font-mono text-xs text-[#457B9D] mb-4">
         1–5 are the factory set. {byNo.size} pressed · {gaps} gap{gaps === 1 ? "" : "s"} — click a gap to press into that number.
       </p>
@@ -64,7 +84,9 @@ export default function RecordShelf({ history, onGap, onOpen, current }) {
       <div className="flex flex-wrap gap-2 pt-3">
         {slots.map((n) => {
           const h = byNo.get(n);
-          const dim = focus && !(h && h.album_id === focus) ? "opacity-20 grayscale" : "";
+          const lit = (!focus || (h && h.album_id === focus)) && (!needle || hit(h));
+          const dim = lit ? "" : "opacity-20 grayscale";
+          const isHit = needle && hit(h);
           if (n < FIRST) {
             return (
               <div key={n} data-testid={`shelf-factory-${n}`} className={`h-14 w-14 rounded-full border-2 border-[#1D3557] bg-[#B9A9E3] ${dim} flex items-center justify-center font-mono font-black text-sm text-[#1D3557]/70`} title="Factory record">
@@ -76,7 +98,7 @@ export default function RecordShelf({ history, onGap, onOpen, current }) {
             const isNext = h.id === nextId;
             const isOpen = current && h.id === current.id;
             return (
-              <div key={n} className={`relative flex flex-col items-center gap-0.5 transition-opacity duration-300 ${dim}`}>
+              <div key={n} ref={n === firstHitNo ? firstHit : null} className={`relative flex flex-col items-center gap-0.5 transition-opacity duration-300 ${dim} ${isHit ? "scale-110" : ""}`}>
                 {isNext && <span data-testid={`shelf-next-${n}`} className="absolute -top-3 font-mono text-[9px] font-black text-[#E63946] whitespace-nowrap">NEXT ▶</span>}
                 <button data-testid={`shelf-record-${n}`} onClick={() => onOpen(h)} title={`${h.title}${h.two_sided ? ` / ${h.title_b}` : ""}${h.album_id ? ` — album disc ${albumTag(h)}` : ""}`}
                   style={h.album_id && !isNext && !isOpen ? { backgroundColor: albumColour(h) } : undefined}

@@ -217,6 +217,14 @@ on an original Fisher-Price music box record player.
 - **Dedication font**: `ded_font` bold|rounded|script (DejaVu Sans Bold / Comfortaa / Pacifico, TTFs in
   backend/fonts, thin fonts emboldened 0.12/0.08 mm); Settings picker; SCAD `mark(..., font)` + `dedFont`.
 - **Shelf album filter**: tap an album name → spotlight its discs (others dim 20 %), tap again to clear.
+- **Backup all records**: `POST /api/backup` starts a background job (one record at a time, zip work in a
+  thread, compresslevel 1, spooled to a temp file), `GET /api/backup` progress, `GET /api/backup.zip` download.
+  Per record: STL(s), SCAD, FPR, sleeve label, JSON meta; albums/*.json; settings.json; README index.
+  `BackupButton` on the Record Shelf (PACKING n/N → DOWNLOAD BACKUP). Preview DB has ~1500 records → slow here.
+- **Font preview**: `GET /api/label-preview.svg?font=&height=&title=&record_no=` flat label drawing; the three
+  font buttons in Settings show it live. **Shelf search**: title or #number box, hits lit, others dim, first
+  hit scrolls into view, Enter opens it, Esc clears.
+- User print feedback: first disc "looks pretty good", needs clean-up before playback; sizing feedback pending.
 - Direct ZIP link given to user: {API}/api/source.zip.
 - Verified: curl on all new endpoints, pytest (analyze/press/api/pack green), browser smoke (shared ctx, save default).
 

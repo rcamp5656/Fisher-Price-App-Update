@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, UploadFile, File, Form, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 from starlette.concurrency import run_in_threadpool
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -9,12 +9,13 @@ import math
 import os
 import base64
 import io
+import json
 import logging
 import re
 import zipfile
 from pathlib import Path
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import uuid
 from datetime import datetime, timezone
 
@@ -713,6 +714,120 @@ async def source_zip():
                 z.writestr(info, data)
     return Response(buf.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": 'attachment; filename="fisher-price-record-maker-source.zip"'})
+
+
+_backup: Dict[str, Any] = {"status": "idle", "done": 0, "total": 0, "path": None, "stamp": None, "error": None}
+
+
+async def _run_backup():
+    """Every record, album and setting: JSON + the STL/SCAD/FPR files. One record at a time, spooled to disk."""
+    import tempfile
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M")
+    tmp = tempfile.NamedTemporaryFile(prefix="fp-backup-", suffix=".zip", delete=False)
+    tmp.close()
+    try:
+        heads = await db.conversions.find({}, HIDDEN).sort("created_at", -1).to_list(None)
+        _backup.update(status="running", done=0, total=len(heads), error=None)
+        index = []
+        used = set()
+
+        def write_record(z, doc):
+            stem = f"{doc.get('record_no') or 'x'}-{_safe_name(doc)}"
+            if stem in used:
+                stem = f"{stem}-{str(doc.get('id', ''))[:6]}"
+            used.add(stem)
+            folder = f"records/{stem}"
+            for key, ext in (("stl_b64", "stl"), ("stl_half_a_b64", "side-a.stl"), ("stl_half_b_b64", "side-b.stl")):
+                if doc.get(key):
+                    z.writestr(f"{folder}/{stem}.{ext}", base64.b64decode(doc[key]))
+            if doc.get("scad"):
+                z.writestr(f"{folder}/{stem}.scad", doc["scad"])
+            if doc.get("fpr"):
+                z.writestr(f"{folder}/{stem}.fpr", doc["fpr"])
+            if doc.get("fpr_b"):
+                z.writestr(f"{folder}/{stem}-side-b.fpr", doc["fpr_b"])
+            z.writestr(f"{folder}/{stem}-label.svg", _label_card(doc, (doc["album_index"], doc["album_count"]) if doc.get("album_index") and doc.get("album_count") else None))
+            meta = {k: v for k, v in doc.items() if k not in ("stl_b64", "stl_half_a_b64", "stl_half_b_b64", "scad", "fpr", "fpr_b")}
+            z.writestr(f"{folder}/{stem}.json", json.dumps(meta, ensure_ascii=False, indent=1, default=str))
+            index.append(f"#{doc.get('record_no') or '-'}  {doc.get('title')}" + (f" / {doc.get('title_b')}" if doc.get("two_sided") else "") + f"  —  {folder}/")
+
+        with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as z:
+            for head in heads:
+                doc = await db.conversions.find_one({"id": head["id"]}, {"_id": 0})
+                if doc:
+                    await asyncio.to_thread(write_record, z, doc)   # keep the event loop free for the app
+                    del doc
+                _backup["done"] += 1
+            albums = await db.albums.find({}, {"_id": 0}).to_list(None)
+            for a in albums:
+                z.writestr(f"albums/{_safe_name(a, 'album')}-{str(a.get('id', ''))[:8]}.json", json.dumps(a, ensure_ascii=False, indent=1, default=str))
+            settings = await db.settings.find({}).to_list(None)
+            z.writestr("settings.json", json.dumps(settings, ensure_ascii=False, indent=1, default=str))
+            z.writestr("README.txt", f"Fisher-Price Record Maker backup — {stamp} UTC\n{CREDITS}\n\n{len(index)} records, {len(albums)} albums.\n"
+                       "Each records/<no>-<title>/ folder holds the STL(s), SCAD, FPR, sleeve label and a JSON with every setting used.\n"
+                       "settings.json = comb profile, numbering start, test-disc default.\n\n" + "\n".join(index) + "\n")
+        old = _backup.get("path")
+        _backup.update(status="ready", path=tmp.name, stamp=stamp, size=os.path.getsize(tmp.name))
+        if old and old != tmp.name and os.path.exists(old):
+            os.unlink(old)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("backup failed")
+        _backup.update(status="error", error=str(e))
+        if os.path.exists(tmp.name):
+            os.unlink(tmp.name)
+
+
+@api_router.post("/backup")
+async def start_backup():
+    if _backup["status"] != "running":
+        asyncio.create_task(_run_backup())
+    return {k: v for k, v in _backup.items() if k != "path"}
+
+
+@api_router.get("/backup")
+async def backup_status():
+    return {k: v for k, v in _backup.items() if k != "path"}
+
+
+@api_router.get("/backup.zip")
+async def backup_zip():
+    if _backup["status"] != "ready" or not _backup["path"] or not os.path.exists(_backup["path"]):
+        raise HTTPException(404, "No backup ready — start one first")
+    return FileResponse(_backup["path"], media_type="application/zip", filename=f"fisher-price-records-backup-{_backup['stamp']}.zip")
+
+
+@api_router.get("/label-preview.svg")
+async def label_preview(font: str = "bold", height: float = 2.4, title: str = "", record_no: int = 0):
+    """Flat top-down drawing of the label area so the dedication font can be judged before pressing."""
+    import shapely
+    font = font if font in fp.DED_FONTS else "bold"
+    height = max(2.0, min(3.5, height))
+
+    def path(geom):
+        d = []
+        for poly in getattr(geom, "geoms", [geom]):
+            for ring in [poly.exterior, *poly.interiors]:
+                pts = list(ring.coords)
+                d.append("M" + " L".join(f"{x:.2f} {-y:.2f}" for x, y in pts) + " Z")
+        return " ".join(d)
+
+    shapes = []
+    ded = fp._text_shape(fp.DEDICATION, fp.DED_R, height, fp.DED_ARC, font)
+    if ded is not None:
+        shapes.append(fp._bend(ded, fp.DED_R, fp.DED_CENTRE))
+    if title.strip():
+        t = fp._text_shape(title.strip()[:40])
+        if t is not None:
+            shapes.append(fp._bend(t))
+    if record_no:
+        shapes.extend(fp._side_marks(record_no))
+    letters = "".join(f'<path d="{path(g)}" fill="#1D3557" fill-rule="evenodd"/>' for g in shapes if g is not None and not g.is_empty)
+    return Response(f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="-21 -21 42 42" width="252" height="252">
+  <circle r="20.5" fill="#B9A9E3" stroke="#1D3557" stroke-width="0.4"/>
+  <circle r="{fp.DED_R}" fill="none" stroke="#1D3557" stroke-width="0.08" stroke-dasharray="0.6 0.6" opacity="0.5"/>
+  <circle r="3.22" fill="#F4F1EA" stroke="#1D3557" stroke-width="0.3"/>
+  {letters}
+</svg>''', media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @api_router.post("/testdisc", response_model=ConversionSummary)

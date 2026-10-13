@@ -436,7 +436,7 @@ export default function Creator() {
             <h2 className="font-sans font-black text-xl tracking-tight flex items-center gap-2">
               <Wand2 className="h-5 w-5" /> 2 · SETTINGS
             </h2>
-            <SettingsPanel s={s} set={set} revSeconds={revSeconds} numStart={numStart} onNumStart={saveNumStart} fit={analysis?.a?.fit} />
+            <SettingsPanel api={API} s={s} set={set} revSeconds={revSeconds} numStart={numStart} onNumStart={saveNumStart} fit={analysis?.a?.fit} />
             <CombEditor onChanged={() => { setAnalysis(null); setResult(null); setParts({ a: null, b: null }); setCombVersion((v) => v + 1); }} />
           </div>
 
@@ -482,7 +482,7 @@ export default function Creator() {
 
         {result && <SpecSheet result={result} />}
         <PrintGuide defaultOpen={!!result} />
-        <RecordShelf history={history} current={result} onOpen={openHistory} onGap={(n) => { set({ recordNo: String(n) }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+        <RecordShelf api={API} history={history} current={result} onOpen={openHistory} onGap={(n) => { set({ recordNo: String(n) }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
         <HistoryPanel api={API} history={history} onPreview={openHistory} />
 
         <footer className="col-span-12 font-mono text-[11px] text-[#457B9D] text-center pt-4 flex flex-col gap-1">
