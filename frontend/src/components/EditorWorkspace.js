@@ -93,7 +93,7 @@ export default function EditorWorkspace({
           <Stat label="Notes" value={countNotes(side.partition)} testId="stat-notes" />
           <Stat label="On-pitch" value={a.exact} />
           <Stat label="Snapped" value={a.adjusted} warn={a.adjusted > 0} />
-          <Stat label="Merged" value={a.merged} warn={a.merged > 0} />
+          <Stat label="No room" value={a.merged} warn={a.merged > 0} testId="stat-lost" />
           <Stat label="Too close" value={clashCount} warn={clashCount > 0} testId="stat-repeats" />
           <Stat label="Chords" value={chordCount} warn={chordCount > 0} testId="stat-chords" />
           {a.staggered > 0 && <Stat label="Staggered" value={a.staggered} testId="stat-staggered" />}

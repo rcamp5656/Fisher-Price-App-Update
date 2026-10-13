@@ -1,0 +1,26 @@
+{
+  "summary": "Iter16 validates (1) experimental `chords` option (no roll/stagger when chords=true) and (2) auto-fit transposition_candidates integration (int `offset`, score>=90, tries budget respected). Backend: 115/115 pytest green (108 regression + 7 new iter16). New asserts: POST /api/press with chord beat (tones 1,3,5 at beat 10) + chords=true keeps all 3 pins on beat 10, toy_fixes==0, mesh_check.ok==true, response.chords==true; same with chords=false => rolled (beats differ). POST /api/analyze with synthesized 3-note MIDI chord at t=5s + chords=true => partition has beat with 3 pins and staggered==0; chords=false => max 1 pin/beat. POST /api/autofit baby1.mid start=18.5 tracks=5 melody_fill=true => fit.offset is int, fit.score=94 (>=90), fit.tries<=12000; with max_tries=500 => fit.tries<=500. POST /api/render baby1 tracks=5 chords=true => audio/wav, X-Sample-Rate=8000, 1 channel, framerate=8000. FRONTEND (public URL baby1.mid): chords-toggle OFF default & chords-hint absent; LOAD NOTES => 59 notes (stat-chords=0); PointerDown on empty cell same beat as filled note => stat-chords=2 and chord-warning visible; toggle chords ON => chords-hint shown, stale-badge shown, stat-chords=0, chord-warning hidden; LOAD NOTES reload OK; CUT THE RECORD => mesh-check 'PRINT READY'; HEAR THE WHOLE SONG (render-song-button) with chords ON => render-result includes '7 side(s) · 387 toy notes · 24.9 s ... 94% match · 8 kHz mono'. Zero console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter16_chords.py",
+    "/app/test_reports/pytest/iter16.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "fisher_price.py is now 1337 lines — above 700-line split threshold. Candidates: move chord/stagger logic into player.py and the melody picking into melody.py.",
+    "`press()` in fisher_price.py skips stagger when chords=true but still runs `make_playable()`. The chord-aware single-tine rest rule relies on that - OK, but worth a code comment because the invariant 'toy_fixes==0 for a clean chord' depends on no twin-tine repeats sneaking in.",
+    "server.py Form(bool) for `chords` works but FastAPI's bool coercion accepts only 'true'/'false'/'1'/'0'; frontend sends 'true'/'false' strings correctly. Still, a Pydantic request model would be clearer for consistency with PressRequest.",
+    "transposition_candidates re-scoring in auto_fit silently keeps the best — fit.offset is reported but there is no telemetry when a non-default offset wins. A test for 'offset != base_choose_transposition()' may be useful on tracks that benefit from a +12/-12 shift (iter16 already saw +27 on baby1)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter16_chords.py (new, 7 tests covering press/analyze/autofit/render)"
+  ],
+  "success_rate": {"backend": "100% (115/115 pytest)", "frontend": "100% of iter16 assertions, 0 console errors"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "Transient MIDI (3-note chord at t=5s) built via mido in tmp_path for analyze tests; no persistent data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter16: `chords` form-field/JSON-prop added to /api/analyze, /api/autofit, /api/render, /api/album, /api/press. When true, same-beat multi-tine notes are preserved (no stagger/roll). Comb has 16 tones x 86 beats (NOT 22) — PressRequest expects 16-row partition. Editor cells use pointer events (onPointerDown), so JS .click() does not fire — use page.mouse.down()/up() at centre. Filled cells have `data-testid=note-{tone}-{beat}` but no `data-filled` attribute. mesh-check selector is `[data-testid=mesh-check]`; there is no `spec-sheet` testid (title is just text 'SPEC SHEET'). analyze-button/convert-button are the LOAD NOTES / CUT THE RECORD testids. baby1.mid tracks='5' melody_fill=true picks +27 st transposition and produces 7 sides, 387 toy notes, 24.9 s/rev, 94% match.",
+  "rca of the issue": "N/A — feature verification pass (no bugs found)."
+}

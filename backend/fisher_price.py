@@ -370,13 +370,19 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
         beat = round(t / duration * MAX_BEAT) if duration > 0 else 0
         beat = max(0, min(MAX_BEAT - 1, beat))
         if partition[tone][beat]:
-            merged += 1
+            # same pitch twice on one beat: stagger it to the nearest free beat instead of merging
+            nb = _nearest_free(partition, tone, beat, comb, mono=stagger)
+            if nb is None:
+                merged += 1  # the disc is full around here — nothing we can do
+                continue
+            beat = nb
+            staggered += 1
         partition[tone][beat] = True
         col_used[beat] = True
         used.add(snapped)
 
     partition_midi = [list(r) for r in partition]
-    staggered = stagger_partition(partition, comb, roll) if stagger else 0
+    staggered += stagger_partition(partition, comb, roll) if stagger else 0
     slid, dropped = make_playable(partition, comb)
     staggered += slid
 
@@ -549,10 +555,12 @@ def _gap_beats(tone: int, comb: Comb, beats: int) -> int:
     return max(gap, 2) if len(comb.tines[tone]) == 1 else gap
 
 
-def _can_place(partition: List[List[bool]], tone: int, b: int, comb: Comb) -> bool:
-    """One pin per beat on the whole disc + per-pitch spacing (disc wraps)."""
+def _can_place(partition: List[List[bool]], tone: int, b: int, comb: Comb, mono: bool = True) -> bool:
+    """One pin per beat on the whole disc (unless chords are allowed) + per-pitch spacing (disc wraps)."""
     beats = len(partition[0])
-    if any(row[b] for row in partition):
+    if mono and any(row[b] for row in partition):
+        return False
+    if not mono and partition[tone][b]:
         return False
     row = partition[tone]
     for d in range(1, _gap_beats(tone, comb, beats)):
@@ -562,6 +570,17 @@ def _can_place(partition: List[List[bool]], tone: int, b: int, comb: Comb) -> bo
 
 
 LEAN_BEATS = 4  # how far a rolled note follows the chosen direction before the other side is tried
+
+
+def _nearest_free(partition: List[List[bool]], tone: int, b: int, comb: Comb, mono: bool = True,
+                  reach: int = 8) -> Optional[int]:
+    """Closest beat (later first) within `reach` where another pin of this pitch fits."""
+    beats = len(partition[0])
+    for d in range(1, reach + 1):
+        for nb in (b + d, b - d):
+            if 0 <= nb < beats and _can_place(partition, tone, nb, comb, mono):
+                return nb
+    return None
 
 
 def _slide(partition: List[List[bool]], tone: int, b: int, comb: Comb, prefer: int) -> bool:
