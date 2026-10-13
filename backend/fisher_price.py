@@ -212,6 +212,10 @@ def _annulus(inner, outer, height, z_center, sections=200):
 LABEL_R = 16.3          # baseline-centre radius of the text arc
 LABEL_MAX_H = 4.6       # letter height (radial)
 LABEL_MAX_ARC = 300.0   # degrees of arc the title may span
+ARC_CENTRE = math.pi    # title arc centred on the left (9 o'clock), like the originals
+MARK_R = 8.5            # radius of the side numeral / dash marks
+MARK_H = 4.0            # numeral height
+DASH_W, DASH_T = 3.0, 0.8
 H_TEXT = 0.6
 _FONT = dict(family="DejaVu Sans", weight="bold")
 
@@ -258,12 +262,14 @@ def _text_shape(title: str):
 
 
 def _bend(shape):
-    """Wrap a flat shape around the label arc: x -> angle, y -> radius."""
+    """Wrap a flat shape around the label arc: x -> angle, y -> radius.
+    Centred on ARC_CENTRE (left side, like the factory records), reading
+    clockwise with letter tops facing outward."""
     import shapely
 
     def warp(coords):
         x, y = coords[:, 0], coords[:, 1]
-        theta = math.pi / 2 - x / LABEL_R
+        theta = ARC_CENTRE - x / LABEL_R
         r = LABEL_R + y
         return np.column_stack([r * np.cos(theta), r * np.sin(theta)])
 
@@ -271,26 +277,54 @@ def _bend(shape):
     return shapely.transform(dense, warp)
 
 
-def _text_meshes(title: str, H: float) -> List:
-    title = (title or "").strip()
-    if not title:
-        return []
-    shape = _text_shape(title)
-    if shape is None:
-        return []
-    shape = _bend(shape)
-    geoms = list(shape.geoms) if hasattr(shape, "geoms") else [shape]
+def _place(shape, angle_deg: float, radius: float):
+    """Put a flat, centred shape at a polar position, tops facing outward."""
+    from shapely import affinity
+    shape = affinity.translate(shape, 0, radius)
+    return affinity.rotate(shape, angle_deg - 90, origin=(0, 0))
+
+
+def _side_marks(side_no: int):
+    """Factory-style marks: side numeral left of the spindle, dash to the right."""
+    from shapely import affinity
+    from shapely.geometry import box
+    marks = []
+    if side_no:
+        num = _text_shape(str(side_no))
+        if num is not None:
+            minx, miny, maxx, maxy = num.bounds
+            k = MARK_H / max(maxy - miny, 1e-6)
+            marks.append(_place(affinity.scale(num, k, k, origin=(0, 0)), 180, MARK_R))
+    marks.append(_place(box(-DASH_W / 2, -DASH_T / 2, DASH_W / 2, DASH_T / 2), 0, MARK_R))
+    return marks
+
+
+def _extrude_label(shapes, H: float) -> List:
     meshes = []
-    for g in geoms:
-        if not g.is_valid:
-            g = g.buffer(0)
-        if g.is_empty or g.area < 0.05:
-            continue
-        for part in (g.geoms if hasattr(g, "geoms") else [g]):
-            m = trimesh.creation.extrude_polygon(part, H_TEXT + OVERLAP)
-            m.apply_translation([0, 0, H - H_INSET - OVERLAP])
-            meshes.append(m)
+    for shape in shapes:
+        geoms = list(shape.geoms) if hasattr(shape, "geoms") else [shape]
+        for g in geoms:
+            if not g.is_valid:
+                g = g.buffer(0)
+            if g.is_empty or g.area < 0.05:
+                continue
+            for part in (g.geoms if hasattr(g, "geoms") else [g]):
+                m = trimesh.creation.extrude_polygon(part, H_TEXT + OVERLAP)
+                m.apply_translation([0, 0, H - H_INSET - OVERLAP])
+                meshes.append(m)
     return meshes
+
+
+def _text_meshes(title: str, H: float, side_no: int = 0) -> List:
+    title = (title or "").strip()
+    shapes = []
+    if title:
+        shape = _text_shape(title)
+        if shape is not None:
+            shapes.append(_bend(shape))
+    if side_no:
+        shapes.extend(_side_marks(side_no))
+    return _extrude_label(shapes, H)
 
 
 def label_glyphs(title: str) -> List[Tuple[str, float, float]]:
@@ -309,7 +343,7 @@ def label_glyphs(title: str) -> List[Tuple[str, float, float]]:
         ext = _text_path(title[: i + 1]).get_extents()
         x_mid = (prev_x1 + ext.x1) / 2 if i else (ext.x0 + ext.x1) / 2
         prev_x1 = ext.x1
-        angle = 90 - math.degrees((x_mid - centre) * s / LABEL_R)
+        angle = math.degrees(ARC_CENTRE) - math.degrees((x_mid - centre) * s / LABEL_R)
         out.append((ch, round(angle, 2), round(float(10 * s), 3)))
     return out
 
@@ -335,7 +369,7 @@ def _pin_meshes(partition: List[List[bool]], H: float) -> List:
 
 def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
                title: str = "", partition_b: List[List[bool]] = None,
-               title_b: str = ""):
+               title_b: str = "", marks: bool = True):
     H = float(thickness)
     base = _cyl(R_STOCK, H, H / 2)
     two_sided = partition_b is not None
@@ -364,11 +398,11 @@ def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
     # pins (bumps) refill groove segments up to the surface
     adds = _pin_meshes(partition, H)
     pin_count = len(adds)
-    adds.extend(_text_meshes(title, H))
+    adds.extend(_text_meshes(title, H, 1 if marks else 0))
     if two_sided:
         side_b = _pin_meshes(partition_b, H)
         pin_count += len(side_b)
-        side_b.extend(_text_meshes(title_b, H))
+        side_b.extend(_text_meshes(title_b, H, 2 if marks else 0))
         for m in side_b:
             m.apply_transform(flip)
         adds.extend(side_b)
@@ -412,6 +446,7 @@ twoSided = {TWO_SIDED};
 labelA = "{TITLE_A}";
 labelB = "{TITLE_B}";
 labelR = 16.3;
+markR = 8.5;
 hText = 0.6;
 
 module createDisc() {{
@@ -463,10 +498,22 @@ module track(inner) {{
 
 // One letter of the title, standing on the arc of radius labelR at the given angle
 module glyph(ch, angle, size, onSecondSide) {{
-        onSide(onSecondSide) rotate(a=angle-90) translate(v=[0, labelR, hStock-hInset-overlap]) {{
+        mark(ch, angle, labelR, size, onSecondSide);
+}}
+
+// Raised character at a polar position, letter top facing outward
+module mark(ch, angle, r, size, onSecondSide) {{
+        onSide(onSecondSide) rotate(a=angle-90) translate(v=[0, r, hStock-hInset-overlap]) {{
                 linear_extrude(height=hText+overlap) {{
                         text(ch, size=size, halign="center", valign="center", font="DejaVu Sans:style=Bold");
                 }}
+        }}
+}}
+
+// Factory-style dash mark to the right of the spindle
+module dash(onSecondSide) {{
+        onSide(onSecondSide) translate(v=[markR, 0, hStock-hInset-overlap]) {{
+                linear_extrude(height=hText+overlap) {{ square(size=[3, 0.8], center=true); }}
         }}
 }}
 
@@ -497,7 +544,7 @@ def _scad_str(s: str) -> str:
 
 def to_scad(partition: List[List[bool]], thickness: float, title: str,
             partition_b: List[List[bool]] = None, title_b: str = "",
-            label_a: str = None, label_b: str = None) -> str:
+            label_a: str = None, label_b: str = None, marks: bool = True) -> str:
     label_a = title if label_a is None else label_a
     label_b = title_b if label_b is None else label_b
     lines = _scad_pins(partition, "false")
@@ -506,9 +553,13 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
         lines.extend(_scad_pins(partition_b, "true"))
     labels = [f'\t\tglyph("{_scad_str(ch)}",{ang},{size},false);'
               for ch, ang, size in label_glyphs(label_a)]
+    if marks:
+        labels += ['\t\tmark("1",180,markR,3.2,false);', '\t\tdash(false);']
     if partition_b is not None:
         labels += [f'\t\tglyph("{_scad_str(ch)}",{ang},{size},true);'
                    for ch, ang, size in label_glyphs(label_b)]
+        if marks:
+            labels += ['\t\tmark("2",180,markR,3.2,true);', '\t\tdash(true);']
     from datetime import datetime
     return _SCAD_TEMPLATE.format(
         DATE_TIME=datetime.now().strftime("%d %b %Y %H:%M"),
@@ -539,7 +590,8 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
     """Partition(s) -> STL / SCAD / FPR files."""
     label_a = title if engrave else ""
     label_b = title_b if engrave else ""
-    mesh, pin_count = build_mesh(partition, thickness, label_a, partition_b, label_b)
+    mesh, pin_count = build_mesh(partition, thickness, label_a, partition_b, label_b,
+                                 marks=engrave)
     stl_bytes = mesh.export(file_type="stl")
     if isinstance(stl_bytes, str):
         stl_bytes = stl_bytes.encode()
@@ -549,7 +601,8 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
         "stl": bytes(stl_bytes),
         "fpr": to_fpr(partition, title),
         "fpr_b": to_fpr(partition_b, title_b) if partition_b is not None else None,
-        "scad": to_scad(partition, thickness, title, partition_b, title_b, label_a, label_b),
+        "scad": to_scad(partition, thickness, title, partition_b, title_b, label_a, label_b,
+                        marks=engrave),
         "stats": {
             "pin_count": pin_count,
             "thickness": thickness,

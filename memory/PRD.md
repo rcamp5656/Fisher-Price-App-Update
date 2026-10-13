@@ -69,6 +69,13 @@ on an original Fisher-Price music box record player.
 - **Share links**: `COPY SHARE LINK` → `/r/:id` page (3D view, downloads, print guide, "Remix" → `/?open=id`).
 - Tested: iteration_3.json (backend 15/15, all frontend flows; PrintGuide auto-open fix verified).
 
+### 2026-10-13 (session 2, batch 3 — factory label match)
+- User supplied photos of an original two-sided record (Humpty Dumpty / Jack and Jill).
+  Label now mirrors it: title arc centred on the LEFT (9 o'clock) reading clockwise with
+  letter tops outward; raised side numeral ("1"/"2") left of the spindle at r 8.5 mm; raised
+  dash mark right of the spindle; all inside the recess. SCAD has `mark()`/`dash()` modules.
+- 3D preview recoloured to Fisher-Price lavender (#B9A9E3). Backend 23/23 tests pass.
+
 ## Backlog / Remaining
 - P1: User validation of physical prints (pin height/width on the real toy).
 - P1: User to verify twin tines 8/9 sound the same pitch on their player (confirms comb mapping).

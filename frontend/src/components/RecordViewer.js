@@ -14,7 +14,7 @@ function Disc({ url }) {
 
   return (
     <mesh geometry={prepared} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow>
-      <meshStandardMaterial color="#E63946" roughness={0.35} metalness={0.12} />
+      <meshStandardMaterial color="#B9A9E3" roughness={0.55} metalness={0.05} />
     </mesh>
   );
 }
