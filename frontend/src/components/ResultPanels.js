@@ -1,14 +1,25 @@
 import React from "react";
-import { Download, FileCode, FileText, CheckCircle2, AlertTriangle, History, RotateCcw } from "lucide-react";
+import { Download, FileCode, FileText, CheckCircle2, AlertTriangle, History, RotateCcw, Share2 } from "lucide-react";
+import { toast } from "sonner";
 import { BTN_BASE, BTN_LIFT, CARD } from "../lib/fp";
 
 const SMALL = `font-sans font-bold text-sm tracking-tight rounded-xl border-2 border-[#1D3557] py-3 flex items-center justify-center gap-2 bg-white text-[#1D3557] shadow-[3px_3px_0_0_#1D3557] ${BTN_LIFT}`;
+
+async function copyShareLink(id) {
+  const url = `${window.location.origin}/r/${id}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast.success("Share link copied", { description: url });
+  } catch (e) {
+    window.prompt("Copy this link:", url);
+  }
+}
 
 export function DownloadPanel({ api, result }) {
   const base = `${api}/conversions/${result.id}`;
   return (
     <div className="flex flex-col gap-3">
-      <p className="font-mono text-xs text-[#457B9D]">4 · DOWNLOAD FILES</p>
+      <p className="font-mono text-xs text-[#457B9D]">4 · DOWNLOAD & SHARE</p>
       <a data-testid="download-stl-button" href={`${base}/stl`} className={`${BTN_BASE} text-lg py-4 bg-[#2A9D8F] text-white`}>
         <Download className="h-5 w-5" /> .STL (3D PRINT)
       </a>
@@ -25,6 +36,14 @@ export function DownloadPanel({ api, result }) {
           </a>
         )}
       </div>
+      <button
+        type="button"
+        data-testid="share-link-button"
+        onClick={() => copyShareLink(result.id)}
+        className={`${SMALL.replace("bg-white", "bg-[#FFB703]")}`}
+      >
+        <Share2 className="h-4 w-4" /> COPY SHARE LINK
+      </button>
     </div>
   );
 }

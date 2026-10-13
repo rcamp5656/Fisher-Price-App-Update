@@ -162,10 +162,11 @@ async def press(req: PressRequest):
     if not any(any(r) for r in req.partition):
         raise HTTPException(400, "Side A has no notes")
     title_b = (req.title_b or "Side B")[:40] if req.partition_b is not None else None
+    min_thick = 4.5 if req.partition_b is not None else 1.5
     try:
         out = await run_in_threadpool(
             fp.press, req.partition, req.title.strip(),
-            max(1.5, min(8.0, req.thickness)),
+            max(min_thick, min(8.0, req.thickness)),
             req.partition_b, title_b or "", req.engrave,
         )
     except Exception as e:

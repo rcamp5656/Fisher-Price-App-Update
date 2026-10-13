@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { NOTES, MAX_BEAT, midiToFreq } from "../lib/fp";
+import { NOTES, MAX_BEAT, SIDE_GAP, REAL_PITCH_OFFSET, midiToFreq } from "../lib/fp";
 
 function pluck(ctx, dest, freq, when) {
   const env = ctx.createGain();
@@ -27,23 +27,32 @@ function pluck(ctx, dest, freq, when) {
 
 const newCtx = () => new (window.AudioContext || window.webkitAudioContext)();
 
-export function useMusicBox(partition, revSeconds) {
+// sequence: array of partitions played back to back (side A, then side B)
+export function useMusicBox(sequence, revSeconds, loop) {
   const [playing, setPlaying] = useState(false);
+  const [sideIdx, setSideIdx] = useState(0);
   const ctxRef = useRef(null);
   const startRef = useRef(0);
-  const beatSecRef = useRef(revSeconds / MAX_BEAT);
-  const timerRef = useRef(null);
+  const revRef = useRef(revSeconds);
+  const timersRef = useRef([]);
   const tapCtxRef = useRef(null);
+  const loopRef = useRef(loop);
+  const playRef = useRef(null);
+  loopRef.current = loop;
+
+  const clearTimers = () => { timersRef.current.forEach(clearTimeout); timersRef.current = []; };
 
   const stop = useCallback(() => {
-    clearTimeout(timerRef.current);
+    clearTimers();
     if (ctxRef.current) ctxRef.current.close();
     ctxRef.current = null;
     setPlaying(false);
+    setSideIdx(0);
   }, []);
 
   const play = useCallback(() => {
-    stop();
+    clearTimers();
+    if (ctxRef.current) ctxRef.current.close();
     const ctx = newCtx();
     ctxRef.current = ctx;
     const master = ctx.createGain();
@@ -51,31 +60,46 @@ export function useMusicBox(partition, revSeconds) {
     master.connect(ctx.destination);
     const t0 = ctx.currentTime + 0.1;
     const beatSec = revSeconds / MAX_BEAT;
+    const sideLen = revSeconds + SIDE_GAP;
     startRef.current = t0;
-    beatSecRef.current = beatSec;
-    partition.forEach((row, tone) =>
-      row.forEach((on, beat) => {
-        if (on) pluck(ctx, master, midiToFreq(NOTES[tone]), t0 + beat * beatSec);
-      })
-    );
+    revRef.current = revSeconds;
+    sequence.forEach((partition, i) => {
+      const base = t0 + i * sideLen;
+      partition.forEach((row, tone) =>
+        row.forEach((on, beat) => {
+          if (on) pluck(ctx, master, midiToFreq(NOTES[tone] + REAL_PITCH_OFFSET), base + beat * beatSec);
+        })
+      );
+      if (i > 0) timersRef.current.push(setTimeout(() => setSideIdx(i), (i * sideLen + 0.1) * 1000));
+    });
     setPlaying(true);
-    timerRef.current = setTimeout(stop, (revSeconds + 1.5) * 1000);
-  }, [partition, revSeconds, stop]);
+    setSideIdx(0);
+    const total = (sequence.length * sideLen + 0.1) * 1000;
+    timersRef.current.push(setTimeout(() => {
+      if (loopRef.current) playRef.current();
+      else stop();
+    }, total));
+  }, [sequence, revSeconds, stop]);
+  playRef.current = play;
 
-  const getBeat = useCallback(() => {
+  // {side, beat} of the playhead, or null when idle
+  const getPos = useCallback(() => {
     const ctx = ctxRef.current;
-    if (!ctx) return -1;
-    return (ctx.currentTime - startRef.current) / beatSecRef.current;
+    if (!ctx) return null;
+    const el = ctx.currentTime - startRef.current;
+    const sideLen = revRef.current + SIDE_GAP;
+    const side = Math.floor(el / sideLen);
+    return { side, beat: ((el - side * sideLen) / revRef.current) * MAX_BEAT };
   }, []);
 
   const tap = useCallback((tone) => {
     if (!tapCtxRef.current) tapCtxRef.current = newCtx();
     const ctx = tapCtxRef.current;
     if (ctx.state === "suspended") ctx.resume();
-    pluck(ctx, ctx.destination, midiToFreq(NOTES[tone]), ctx.currentTime);
+    pluck(ctx, ctx.destination, midiToFreq(NOTES[tone] + REAL_PITCH_OFFSET), ctx.currentTime);
   }, []);
 
   useEffect(() => () => { stop(); tapCtxRef.current?.close(); }, [stop]);
 
-  return { playing, play, stop, getBeat, tap };
+  return { playing, sideIdx, play, stop, getPos, tap };
 }

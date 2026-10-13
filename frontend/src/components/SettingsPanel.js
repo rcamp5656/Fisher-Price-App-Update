@@ -51,7 +51,7 @@ export default function SettingsPanel({ s, set, revSeconds }) {
 
       <div className="flex items-center justify-between">
         <label className="font-mono text-sm flex items-center gap-2"><Disc3 className="h-4 w-4" /> Two-sided disc</label>
-        <Toggle checked={s.twoSided} onChange={(v) => set({ twoSided: v })} testId="two-sided-toggle" />
+        <Toggle checked={s.twoSided} onChange={(v) => set({ twoSided: v, thickness: v ? Math.max(5, s.thickness) : s.thickness })} testId="two-sided-toggle" />
       </div>
 
       {s.twoSided && (
@@ -127,11 +127,14 @@ export default function SettingsPanel({ s, set, revSeconds }) {
       <div>
         <Row icon={Ruler} label="Disc thickness" value={`${s.thickness.toFixed(1)}mm`} testId="thickness-value" />
         <input
-          type="range" min="2" max="6" step="0.5" value={s.thickness}
+          type="range" min={s.twoSided ? "4.5" : "2"} max="7" step="0.5" value={s.thickness}
           data-testid="thickness-slider"
           onChange={(e) => set({ thickness: Number(e.target.value) })}
           className="w-full mt-2 accent-[#457B9D]"
         />
+        {s.twoSided && (
+          <p className="font-mono text-[10px] text-[#457B9D] mt-1">Two-sided discs need ≥ 5 mm so the top and bottom grooves don't meet (Fred's spec).</p>
+        )}
       </div>
     </div>
   );

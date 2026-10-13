@@ -1,12 +1,13 @@
-import React from "react";
-import { Play, Square, RotateCcw, Gauge, AlertTriangle } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Play, Square, RotateCcw, Gauge, AlertTriangle, Repeat } from "lucide-react";
 import NoteEditor from "./NoteEditor";
+import TrackView from "./TrackView";
 import { useMusicBox } from "../hooks/useMusicBox";
-import { countNotes, speedPct, BTN_LIFT } from "../lib/fp";
+import { countNotes, speedPct, repeatConflicts, BTN_LIFT } from "../lib/fp";
 
-function Stat({ label, value, warn }) {
+function Stat({ label, value, warn, testId }) {
   return (
-    <div className={`border-2 border-[#1D3557] rounded-md px-2 py-1 ${warn ? "bg-[#FFB703]" : "bg-white"}`}>
+    <div data-testid={testId} className={`border-2 border-[#1D3557] rounded-md px-2 py-1 ${warn ? "bg-[#FFB703]" : "bg-white"}`}>
       <div className="text-[9px] uppercase text-[#457B9D] leading-none">{label}</div>
       <div className="font-black text-sm leading-tight">{value}</div>
     </div>
@@ -14,33 +15,60 @@ function Stat({ label, value, warn }) {
 }
 
 export default function EditorWorkspace({
-  sides, active, onActive, duration, revSeconds, onRevSeconds,
+  sides, active, onActive, duration, revSeconds, onRevSeconds, loop, onLoop,
 }) {
   const side = sides.find((s) => s.key === active) || sides[0];
-  const { playing, play, stop, getBeat, tap } = useMusicBox(side.partition, revSeconds);
+  const [view, setView] = useState("pitch");
+  const sequence = useMemo(() => sides.map((s) => s.partition), [sides]);
+  const { playing, sideIdx, play, stop, getPos, tap } = useMusicBox(sequence, revSeconds, loop);
   const a = side.analysis;
   const pct = speedPct(duration, revSeconds);
+  const conflicts = useMemo(() => repeatConflicts(side.partition), [side.partition]);
+  const clashCount = conflicts.size;
+
+  useEffect(() => {
+    if (playing && sides[sideIdx]) onActive(sides[sideIdx].key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, sideIdx]);
+
+  const activeIdx = sides.indexOf(side);
+  const getBeat = () => {
+    const p = getPos();
+    return p && p.side === activeIdx ? p.beat : -1;
+  };
 
   return (
     <div className="flex flex-col h-full p-4 gap-3" data-testid="editor-workspace">
       <div className="flex flex-wrap items-center gap-2">
-        {sides.length > 1 && sides.map((s) => (
+        <div className="flex rounded-lg border-2 border-[#1D3557] overflow-hidden font-sans font-black text-xs">
+          {[["pitch", "16 PITCHES"], ["tracks", "22 TINES"]].map(([v, l]) => (
+            <button
+              key={v} data-testid={`view-${v}`} onClick={() => setView(v)}
+              className={`px-3 py-1.5 ${view === v ? "bg-[#1D3557] text-white" : "bg-white hover:bg-[#E9C46A]"}`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        {sides.length > 1 && sides.map((s, i) => (
           <button
             key={s.key}
             data-testid={`side-tab-${s.key}`}
-            onClick={() => { stop(); onActive(s.key); }}
-            className={`font-sans font-black text-sm px-3 py-1.5 rounded-lg border-2 border-[#1D3557] ${
+            onClick={() => { if (!playing) onActive(s.key); }}
+            className={`font-sans font-black text-sm px-3 py-1.5 rounded-lg border-2 border-[#1D3557] flex items-center gap-2 ${
               s.key === active ? "bg-[#1D3557] text-white" : "bg-white hover:bg-[#E9C46A]"
             }`}
           >
+            {playing && sideIdx === i && <span className="h-2 w-2 rounded-full bg-[#E63946] animate-pulse" />}
             SIDE {s.key.toUpperCase()} · {s.title || "untitled"}
           </button>
         ))}
         <div className="flex gap-2 font-mono ml-auto">
-          <Stat label="Notes" value={countNotes(side.partition)} />
+          <Stat label="Notes" value={countNotes(side.partition)} testId="stat-notes" />
           <Stat label="On-pitch" value={a.exact} />
           <Stat label="Snapped" value={a.adjusted} warn={a.adjusted > 0} />
           <Stat label="Merged" value={a.merged} warn={a.merged > 0} />
+          <Stat label="Repeats" value={clashCount} warn={clashCount > 0} testId="stat-repeats" />
           <Stat label="Transpose" value={`${a.offset >= 0 ? "+" : ""}${a.offset}`} />
         </div>
       </div>
@@ -51,17 +79,28 @@ export default function EditorWorkspace({
           {a.merged} note(s) landed on an already-filled beat and were merged — shorten the capture window for finer timing.
         </p>
       )}
+      {clashCount > 0 && (
+        <p data-testid="repeat-warning" className="font-mono text-[11px] text-[#1D3557] bg-[#FFB703] border-2 border-[#E63946] rounded-md px-2 py-1 flex items-center gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#E63946]" />
+          {clashCount} highlighted note(s) ask a single tine to strike on back-to-back beats — the tine is still ringing, so the second note may go silent. Nudge one note or drop it.
+        </p>
+      )}
 
       <div className="overflow-x-auto flex-1">
         <div className="min-w-[760px]">
-          <NoteEditor
-            partition={side.partition}
-            onChange={side.onChange}
-            duration={duration}
-            playing={playing}
-            getBeat={getBeat}
-            onTap={tap}
-          />
+          {view === "tracks" ? (
+            <TrackView partition={side.partition} duration={duration} />
+          ) : (
+            <NoteEditor
+              partition={side.partition}
+              onChange={side.onChange}
+              duration={duration}
+              playing={playing}
+              getBeat={getBeat}
+              onTap={tap}
+              conflicts={conflicts}
+            />
+          )}
         </div>
       </div>
 
@@ -74,7 +113,18 @@ export default function EditorWorkspace({
           }`}
         >
           {playing ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          {playing ? "STOP" : "PLAY PREVIEW"}
+          {playing ? "STOP" : sides.length > 1 ? "PLAY A → B" : "PLAY PREVIEW"}
+        </button>
+        <button
+          data-testid="loop-button"
+          aria-pressed={loop}
+          onClick={() => onLoop(!loop)}
+          title="Loop the disc"
+          className={`font-sans font-bold text-sm px-3 py-2 rounded-lg border-2 border-[#1D3557] flex items-center gap-2 shadow-[3px_3px_0_0_#1D3557] ${BTN_LIFT} ${
+            loop ? "bg-[#E63946] text-white" : "bg-white"
+          }`}
+        >
+          <Repeat className="h-4 w-4" /> Loop
         </button>
         <button
           data-testid="reset-notes-button"
@@ -86,7 +136,7 @@ export default function EditorWorkspace({
         <label className="font-mono text-xs flex items-center gap-2 ml-auto">
           <Gauge className="h-4 w-4" /> Toy speed
           <input
-            type="range" min="25" max="40" step="1" value={revSeconds}
+            type="range" min="20" max="60" step="1" value={revSeconds}
             data-testid="rev-slider"
             onChange={(e) => onRevSeconds(Number(e.target.value))}
             className="w-28 accent-[#E63946]"
@@ -98,7 +148,7 @@ export default function EditorWorkspace({
         </label>
       </div>
       <p className="font-mono text-[10px] text-[#457B9D]">
-        click empty = add · click note = remove · drag note = nudge · ×2 = twin-tine pitch (repeats fast) · preview at real toy speed
+        click empty = add · click note = remove · drag note = nudge · row label = tine number(s) on the 22-tine comb · preview sounds at real toy pitch (A♭ major)
       </p>
     </div>
   );

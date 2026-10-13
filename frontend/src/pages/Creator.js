@@ -8,6 +8,7 @@ import UploadZone from "../components/UploadZone";
 import SettingsPanel from "../components/SettingsPanel";
 import EditorWorkspace from "../components/EditorWorkspace";
 import { DownloadPanel, SpecSheet, HistoryPanel } from "../components/ResultPanels";
+import PrintGuide from "../components/PrintGuide";
 import { CARD, BTN_BASE, BTN_DISABLED, MAX_BEAT, NOTES, TOY_REV_SECONDS } from "../lib/fp";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -36,6 +37,7 @@ export default function Creator() {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [history, setHistory] = useState([]);
+  const [loop, setLoop] = useState(false);
   const skipStale = useRef(false);
 
   const set = (patch) => setS((p) => ({ ...p, ...patch }));
@@ -47,6 +49,15 @@ export default function Creator() {
     } catch (e) { /* ignore */ }
   }, []);
   useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("open");
+    if (!id) return;
+    axios.get(`${API}/conversions/${id}`)
+      .then(({ data }) => { openHistory(data); window.history.replaceState({}, "", "/"); })
+      .catch(() => setError("That shared record could not be found."));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (skipStale.current) { skipStale.current = false; return; }
@@ -188,6 +199,7 @@ export default function Creator() {
               <EditorWorkspace
                 sides={sides} active={active} onActive={setActive}
                 duration={s.duration} revSeconds={revSeconds} onRevSeconds={setRevSeconds}
+                loop={loop} onLoop={setLoop}
               />
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">
@@ -268,6 +280,7 @@ export default function Creator() {
         )}
 
         {result && <SpecSheet result={result} />}
+        <PrintGuide defaultOpen={!!result} />
         <HistoryPanel api={API} history={history} onPreview={openHistory} />
 
         <footer className="col-span-12 font-mono text-[11px] text-[#457B9D] text-center pt-4">

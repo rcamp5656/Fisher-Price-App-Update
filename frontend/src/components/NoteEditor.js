@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { NOTES, MAX_BEAT, TWIN_TINE, noteName, clonePartition } from "../lib/fp";
+import { NOTES, MAX_BEAT, TWIN_TINE, TINES, REAL_PITCH_OFFSET, noteName, clonePartition } from "../lib/fp";
 
-const LABEL_W = 52;
+const LABEL_W = 64;
 
 function Playhead({ playing, getBeat }) {
   const [beat, setBeat] = useState(-1);
@@ -29,7 +29,7 @@ const cellAt = (e) => {
 };
 const same = (a, b) => a.tone === b.tone && a.beat === b.beat;
 
-export default function NoteEditor({ partition, onChange, duration, playing, getBeat, onTap }) {
+export default function NoteEditor({ partition, onChange, duration, playing, getBeat, onTap, conflicts }) {
   const drag = useRef(null);
 
   const update = (fn) => {
@@ -91,27 +91,33 @@ export default function NoteEditor({ partition, onChange, duration, playing, get
         {[...partition].map((_, i) => NOTES.length - 1 - i).map((tone) => (
           <React.Fragment key={tone}>
             <div
-              className="h-6 font-mono text-[10px] font-bold leading-6 pr-1 text-right text-[#1D3557] flex items-center justify-end gap-0.5"
-              title={TWIN_TINE.has(tone) ? "Two tines on the comb — can repeat on consecutive beats" : "Single tine"}
+              className="h-6 font-mono text-[10px] font-bold leading-6 pr-1 text-right text-[#1D3557] flex items-center justify-end gap-1"
+              title={`${noteName(NOTES[tone])} in Fred's notation · sounds ${noteName(NOTES[tone] + REAL_PITCH_OFFSET)} on the toy · tine${TINES[tone].length > 1 ? "s" : ""} ${TINES[tone].join("+")}${TWIN_TINE.has(tone) ? " (twin — can repeat on consecutive beats)" : ""}`}
             >
-              {TWIN_TINE.has(tone) && <span className="text-[#2A9D8F] text-[8px] leading-none">×2</span>}
+              <span className="text-[#457B9D] text-[8px] leading-none font-normal">{TINES[tone].join("+")}</span>
               {noteName(NOTES[tone])}
             </div>
-            {partition[tone].map((on, beat) => (
-              <div
-                key={beat}
-                data-tone={tone}
-                data-beat={beat}
-                data-testid={on ? `note-${tone}-${beat}` : undefined}
-                className={`h-6 rounded-[2px] border transition-colors duration-100 ${
-                  on
-                    ? "bg-[#E63946] border-[#1D3557] hover:bg-[#c42f3b]"
-                    : tone % 2 === 0
-                      ? "bg-white border-[#1D3557]/15 hover:bg-[#E9C46A]"
-                      : "bg-[#F4F1EA] border-[#1D3557]/15 hover:bg-[#E9C46A]"
-                }`}
-              />
-            ))}
+            {partition[tone].map((on, beat) => {
+              const clash = on && conflicts.has(`${tone}-${beat}`);
+              return (
+                <div
+                  key={beat}
+                  data-tone={tone}
+                  data-beat={beat}
+                  data-testid={on ? (clash ? `clash-${tone}-${beat}` : `note-${tone}-${beat}`) : undefined}
+                  title={clash ? "Single tine can't re-strike this fast — may go silent" : undefined}
+                  className={`h-6 rounded-[2px] border transition-colors duration-100 ${
+                    clash
+                      ? "bg-[#FFB703] border-[#E63946] border-2 hover:bg-[#e0a000]"
+                      : on
+                        ? "bg-[#E63946] border-[#1D3557] hover:bg-[#c42f3b]"
+                        : tone % 2 === 0
+                          ? "bg-white border-[#1D3557]/15 hover:bg-[#E9C46A]"
+                          : "bg-[#F4F1EA] border-[#1D3557]/15 hover:bg-[#E9C46A]"
+                  }`}
+                />
+              );
+            })}
           </React.Fragment>
         ))}
       </div>
