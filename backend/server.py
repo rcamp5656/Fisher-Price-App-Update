@@ -808,21 +808,36 @@ async def download_fpr(conversion_id: str, side: str = "a"):
     )
 
 
+_ALBUM_COLOURS = ["#E63946", "#2A9D8F", "#FFB703", "#457B9D", "#8E44AD", "#F4845F", "#1D3557", "#6A994E", "#D77A61", "#5BC0BE"]
+
+
 def _label_card(doc, album=None) -> str:
     """Printable label card (SVG, 100 x 60 mm) for the record sleeve.
     album = (index, count) adds the sleeve number so an album stays in order."""
     def esc(t):
         return (t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def fit(t, size, width=60.0):
+        # squeeze long titles into the text column instead of running under the disc art
+        return f' textLength="{width}" lengthAdjust="spacingAndGlyphs"' if len(t or "") * size * 0.6 > width else ""
     notes = " ".join(n["name"] for n in doc.get("notes_used", []))
     side_b = (f'<text x="8" y="40" font-size="4" fill="#457B9D">SIDE B</text>'
-              f'<text x="8" y="46" font-size="6" font-weight="700">{esc(doc.get("title_b"))}</text>'
+              f'<text x="8" y="46" font-size="6" font-weight="700"{fit(doc.get("title_b"), 6)}>{esc(doc.get("title_b"))}</text>'
               if doc.get("two_sided") else "")
     badge = ""
+    band = ""
     if album:
         i, n = album
-        badge = (f'<rect x="60" y="3" width="13" height="8" rx="1.5" fill="#1D3557"/>'
+        colour = _ALBUM_COLOURS[(i - 1) % len(_ALBUM_COLOURS)]
+        badge = (f'<rect x="60" y="3" width="13" height="8" rx="1.5" fill="{colour}"/>'
                  f'<text x="66.5" y="8.8" font-size="4.5" font-weight="700" fill="#F4F1EA" text-anchor="middle">{i}/{n}</text>'
                  f'<text x="66.5" y="15" font-size="2.6" fill="#457B9D" text-anchor="middle">disc {i} of {n}</text>')
+        # colour band down the spine + a dot per disc with this one filled, so a set reads at a glance
+        dots = "".join(f'<circle cx="{3.5}" cy="{14 + k * 4.2}" r="1.1" fill="{_ALBUM_COLOURS[k % len(_ALBUM_COLOURS)]}" '
+                       f'stroke="#F4F1EA" stroke-width="{0.5 if k + 1 == i else 0}"/>' for k in range(min(n, 10)))
+        band = (f'<rect x="0.5" y="0.5" width="6" height="59" rx="3" fill="{colour}"/>'
+                f'<rect x="3.5" y="0.5" width="3" height="59" fill="{colour}"/>{dots}'
+                f'<text transform="translate(5,57) rotate(-90)" font-size="2.4" font-weight="700" fill="#F4F1EA" text-anchor="start">DISC {i}</text>')
     uid = re.sub(r"[^a-z0-9]", "", str(doc.get("id", "x")))[:8] or "x"
     # dedication bent around the little disc, like the raised ring on the record label
     ded = (f'<defs><path id="ded-{uid}" d="M 73 14 A 11 11 0 1 1 95 14 A 11 11 0 1 1 73 14"/></defs>'
@@ -830,14 +845,16 @@ def _label_card(doc, album=None) -> str:
            f'{esc(fp.DEDICATION)}</textPath></text>')
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm" viewBox="0 0 100 60" font-family="DejaVu Sans, Arial, sans-serif" fill="#1D3557">
   <rect x="0.5" y="0.5" width="99" height="59" rx="3" fill="#F4F1EA" stroke="#1D3557" stroke-width="1"/>
+  {band}
   <circle cx="84" cy="14" r="9" fill="#B9A9E3" stroke="#1D3557" stroke-width="0.8"/>
   <circle cx="84" cy="14" r="1.5" fill="#F4F1EA" stroke="#1D3557" stroke-width="0.5"/>
   {ded}
-  <text x="84" y="31" font-size="5" text-anchor="middle" font-weight="700">RECORD #{doc.get("record_no") or "-"}</text>
+  <text x="84" y="29.5" font-size="2.8" text-anchor="middle" fill="#457B9D">RECORD</text>
+  <text x="84" y="35" font-size="5" text-anchor="middle" font-weight="700">#{doc.get("record_no") or "-"}</text>
   {badge}
-  <text x="8" y="12" font-size="3.5" fill="#457B9D">FISHER-PRICE MUSIC BOX RECORD PLAYER</text>
+  <text x="8" y="12" font-size="2.6" fill="#457B9D" textLength="54" lengthAdjust="spacingAndGlyphs">FISHER-PRICE MUSIC BOX RECORD PLAYER</text>
   <text x="8" y="22" font-size="4" fill="#457B9D">SIDE A</text>
-  <text x="8" y="29" font-size="6" font-weight="700">{esc(doc.get("title"))}</text>
+  <text x="8" y="29" font-size="6" font-weight="700"{fit(doc.get("title"), 6)}>{esc(doc.get("title"))}</text>
   {side_b}
   <text x="8" y="51.5" font-size="2.6" fill="#457B9D" font-style="italic">{esc(fp.DEDICATION)} · © 2026 Russ Campbell</text>
   <text x="8" y="55.5" font-size="2.8" fill="#457B9D">{doc.get("pin_count")} pins · {doc.get("thickness")} mm · {doc.get("duration")}s window · {esc(notes)}</text>

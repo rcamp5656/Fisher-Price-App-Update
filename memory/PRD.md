@@ -202,6 +202,12 @@ on an original Fisher-Price music box record player.
   badge, play order) + `sleeves/` folder in the album ZIP; PRINT SLEEVE SHEET button in AlbumPanel.
 - **Offline build**: `/app/launchers/` → ZIP root gets start-windows.bat, start-mac.command, start-linux.sh
   (0755), BUILD-GUIDE.txt; `backend/requirements-local.txt` (public PyPI only). README updated.
+- **Label preview**: RecordViewer FULL DISC / READ LABEL toggle (straight-down close-up, grazing light,
+  hint box); viewer is now sticky + viewport-height instead of stretching to the sidebar height.
+- **Sleeve colour bands**: album cards get a coloured spine (10-colour palette by disc index), DISC n text,
+  a dot row with the current disc highlighted, matching badge colour; long titles squeezed via textLength,
+  RECORD / #no split into two lines, header shrunk so nothing runs under the disc art.
+- Defaults load no longer flags "settings changed" on an opened record.
 - Verified: curl on all new endpoints, pytest (analyze/press/api/pack green), browser smoke (shared ctx, save default).
 
 ## Backlog / Remaining

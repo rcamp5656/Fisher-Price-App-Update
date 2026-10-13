@@ -191,7 +191,7 @@ export default function Creator() {
   useEffect(() => {
     axios.get(`${API}/defaults`).then(({ data }) => {
       setDefaults(data);
-      if (data.voices) set({ voices: data.voices, chords: data.voices > 1 });
+      if (data.voices && data.voices !== DEFAULTS.voices) { skipStale.current = true; set({ voices: data.voices, chords: data.voices > 1 }); }
     }).catch(() => {});
   }, []);
   const makeTestDisc = async () => {
@@ -347,7 +347,7 @@ export default function Creator() {
               </span>
             )}
           </div>
-          <div className="relative flex-1 min-h-[420px]">
+          <div className={`relative flex-1 ${showViewer ? "min-h-[680px]" : "min-h-[420px]"}`}>
             {showViewer ? (
               <RecordViewer url={`${API}/conversions/${result.id}/stl`} />
             ) : analysis ? (
