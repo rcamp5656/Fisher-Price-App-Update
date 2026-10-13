@@ -1,5 +1,6 @@
 import React, { useMemo, useRef } from "react";
-import { Crosshair } from "lucide-react";
+import { Crosshair, ChevronLeft, ChevronRight } from "lucide-react";
+import { INPUT } from "../lib/fp";
 
 // Whole-song pin map with a draggable capture window
 export default function SongOverview({ scan, duration, start, onStart, label }) {
@@ -19,12 +20,31 @@ export default function SongOverview({ scan, duration, start, onStart, label }) 
     onStart(Math.round(Math.max(0, Math.min(total - duration, t)) * 10) / 10);
   };
   const drag = useRef(false);
+  const maxStart = Math.max(0, total - duration);
+  const setStart = (v) => onStart(Math.round(Math.max(0, Math.min(maxStart, Number(v) || 0)) * 10) / 10);
 
   return (
     <div data-testid="song-overview" className="font-mono text-[10px] text-[#457B9D]">
       <div className="flex items-center justify-between mb-1">
         <span className="flex items-center gap-1"><Crosshair className="h-3 w-3" /> {label || "Whole song"} · {scan.events.length} notes · {scan.total.toFixed(0)}s — drag the window to the best {duration}s</span>
         <span className="font-bold text-[#1D3557]" data-testid="window-start">{start.toFixed(1)}s → {(start + duration).toFixed(1)}s</span>
+      </div>
+      <div className="flex items-center gap-1 mb-1">
+        <button type="button" data-testid="window-nudge-left" onClick={() => setStart(start - 0.5)} disabled={start <= 0}
+          className="h-7 w-7 flex items-center justify-center rounded border-2 border-[#1D3557] bg-white hover:bg-[#E9C46A] disabled:opacity-40">
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <label className="flex items-center gap-1 text-[#1D3557]">
+          start
+          <input data-testid="window-start-input" type="number" step="0.1" min="0" max={maxStart.toFixed(1)} value={start}
+            onChange={(e) => setStart(e.target.value)} className={`${INPUT} w-20 py-0.5 text-xs`} />
+          s
+        </label>
+        <button type="button" data-testid="window-nudge-right" onClick={() => setStart(start + 0.5)} disabled={start >= maxStart}
+          className="h-7 w-7 flex items-center justify-center rounded border-2 border-[#1D3557] bg-white hover:bg-[#E9C46A] disabled:opacity-40">
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        <span className="ml-auto">max {maxStart.toFixed(1)}s</span>
       </div>
       <div
         ref={ref}

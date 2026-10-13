@@ -12,6 +12,7 @@ import LibraryPicker from "../components/LibraryPicker";
 import CombEditor from "../components/CombEditor";
 import { DownloadPanel, SpecSheet, HistoryPanel } from "../components/ResultPanels";
 import PrintGuide from "../components/PrintGuide";
+import RecordShelf from "../components/RecordShelf";
 import { CARD, BTN_BASE, BTN_DISABLED, TOY_REV_SECONDS, applyComb, emptyPartition } from "../lib/fp";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -331,6 +332,7 @@ export default function Creator() {
 
         {result && <SpecSheet result={result} />}
         <PrintGuide defaultOpen={!!result} />
+        <RecordShelf history={history} onOpen={openHistory} onGap={(n) => { set({ recordNo: String(n) }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
         <HistoryPanel api={API} history={history} onPreview={openHistory} />
 
         <footer className="col-span-12 font-mono text-[11px] text-[#457B9D] text-center pt-4">

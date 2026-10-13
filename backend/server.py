@@ -6,8 +6,10 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import base64
+import io
 import logging
 import re
+import zipfile
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -364,6 +366,69 @@ async def download_fpr(conversion_id: str, side: str = "a"):
         content=doc[field],
         media_type="text/plain",
         headers={"Content-Disposition": f'attachment; filename="{_safe_name(doc)}{suffix}.fpr"'},
+    )
+
+
+def _label_card(doc) -> str:
+    """Printable label card (SVG, 100 x 60 mm) for the record sleeve."""
+    def esc(t):
+        return (t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    notes = " ".join(n["name"] for n in doc.get("notes_used", []))
+    side_b = (f'<text x="8" y="40" font-size="4" fill="#457B9D">SIDE B</text>'
+              f'<text x="8" y="46" font-size="6" font-weight="700">{esc(doc.get("title_b"))}</text>'
+              if doc.get("two_sided") else "")
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm" viewBox="0 0 100 60" font-family="DejaVu Sans, Arial, sans-serif" fill="#1D3557">
+  <rect x="0.5" y="0.5" width="99" height="59" rx="3" fill="#F4F1EA" stroke="#1D3557" stroke-width="1"/>
+  <circle cx="84" cy="14" r="9" fill="#B9A9E3" stroke="#1D3557" stroke-width="0.8"/>
+  <circle cx="84" cy="14" r="1.5" fill="#F4F1EA" stroke="#1D3557" stroke-width="0.5"/>
+  <text x="84" y="31" font-size="5" text-anchor="middle" font-weight="700">RECORD #{doc.get("record_no") or "-"}</text>
+  <text x="8" y="12" font-size="3.5" fill="#457B9D">FISHER-PRICE MUSIC BOX RECORD PLAYER</text>
+  <text x="8" y="22" font-size="4" fill="#457B9D">SIDE A</text>
+  <text x="8" y="29" font-size="6" font-weight="700">{esc(doc.get("title"))}</text>
+  {side_b}
+  <text x="8" y="55" font-size="2.8" fill="#457B9D">{doc.get("pin_count")} pins · {doc.get("thickness")} mm · {doc.get("duration")}s window · {esc(notes)}</text>
+</svg>
+'''
+
+
+_PACK_README = """Fisher-Price Music Box Record Maker - print pack
+=================================================
+Record #{no}: {title}{b}
+
+Files
+  {name}.stl        print this at 100% scale (diameter 121 mm), flat, label side (side A) up
+  {name}.scad       OpenSCAD source (edit pins / labels by hand if you like)
+  {name}.fpr        music-box tune-tracker file for side A{fprb}
+  {name}-label.svg  100 x 60 mm label card for the sleeve (open in a browser and print)
+
+Print settings
+  0.10-0.12 mm layers, 0.4 mm nozzle (0.25 mm for crisper pins), PLA or PETG
+  3-4 perimeters, 40%+ infill, no supports, outer walls <= 40 mm/s, seam at rear
+  Two-sided discs are 5 mm thick; single-sided 3 mm
+"""
+
+
+@api_router.get("/conversions/{conversion_id}/pack")
+async def download_pack(conversion_id: str):
+    doc = await db.conversions.find_one({"id": conversion_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    name = _safe_name(doc)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(f"{name}.stl", base64.b64decode(doc["stl_b64"]))
+        z.writestr(f"{name}.scad", doc["scad"])
+        z.writestr(f"{name}.fpr", doc["fpr"])
+        if doc.get("fpr_b"):
+            z.writestr(f"{name}-sideB.fpr", doc["fpr_b"])
+        z.writestr(f"{name}-label.svg", _label_card(doc))
+        z.writestr("README.txt", _PACK_README.format(
+            no=doc.get("record_no") or "-", title=doc.get("title"), name=name,
+            b=f" / {doc.get('title_b')}" if doc.get("two_sided") else "",
+            fprb=f"\n  {name}-sideB.fpr  tune-tracker file for side B" if doc.get("fpr_b") else ""))
+    return Response(
+        content=buf.getvalue(), media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}-print-pack.zip"'},
     )
 
 
