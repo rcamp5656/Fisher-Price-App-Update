@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 4 — stagger bug fix, record_no override, twin-pin flip, comb GET/PUT/DELETE, factory library, song overview, pin radius. Backend: 36/37 pytest pass (23 regression + 14 new in test_iter4_features.py). One real backend bug found: GET /api/next-record-no with blank title (?title=) returns HTTP 500 because the handler calls _record_no('\\u0000') and MongoDB rejects a regex containing an embedded null byte. UI label never resolves 'auto → #…' until a title is typed (fallback silently caught). Frontend (Playwright on preview URL): /api/analyze response has staggered=0 for Twinkle (28 notes), chord-added MIDI yields staggered>=2 with no beat column holding >1 True. /api/press?record_no=42 echoes 42; auto-assign gives >=6; overrides {tone-beat:1} echoed in response. /api/comb returns factory (22 tracks, 16 notes, factory=true). PUT comb with tracks[19]=96 → 15 notes; analyze returns 15-row partition; press with 16 rows → 400. PUT unsorted → 400, PUT 21-length → 422. DELETE restores factory. /api/library returns 10 tunes, each with analysis.partition 16x86. /api/scan on sample_twinkle returns 28 events, total ~12s; non-midi → 400. UI: song-overview + capture-window appear after upload with window-start '0.0s → 25.0s'; mouse click near right edge does not throw (window stays 0 for a 12s file as expected). record-no-input blank shows 'auto → #N' once title is set (currently '…' for blank title due to the backend bug); typing 77 flips label to 'manual' and the pressed record-number shows '#77'. 22 TINES view: clicking track-pin-8-12 moves pin to track-pin-7-12 (sibling); CUT THE RECORD succeeds with overrides. library-toggle → library-list shows 10 tunes; library-humpty-dumpty loads 51 notes, sets title='Humpty Dumpty', CUT THE RECORD succeeds, 3D canvas renders. comb-toggle opens comb-editor; comb-tine-1='G4', comb-tine-8/9='C6', comb-tine-22='D7'. Entering 'XX' and comb-save shows error toast 'Tine 22: XX is not a note name (use e.g. G#5)' and comb unchanged; comb-reset shows 'Factory comb restored'. stat-chords jumps 0→N when adding clash cells, chord-warning testid visible, clash-{tone}-{beat} testid appears, clicking the clash removes the note (count drops). Factory comb restored after tests (DELETE /api/comb).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "/api/next-record-no?title=", "issue": "Returns HTTP 500 for blank title. server.py line 140 calls `_record_no('\\u0000')` which builds a regex containing a NUL byte; MongoDB raises OperationFailure 'Regular expression cannot contain an embedded null byte'. UI consequence: 'auto → #…' label never resolves until the user types a title. Fix: handle blank title path by querying for next free record_no without the title regex (e.g. `if not title: skip the same-title lookup`), or sentinel with a value that cannot match any real title but is regex-safe (e.g. a unique UUID string that is still a valid regex).", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SettingsPanel 'auto → #N' label", "issue": "Shows 'auto → #…' indefinitely while title-input is blank because the hitting /api/next-record-no (empty title) 500s and the error is swallowed by .catch(()=>{}). Spec says blank value should show 'auto → #N'. Fix is on the backend endpoint (see critical issue); frontend already behaves correctly once title is set.", "selector": "[data-testid=record-no-input] label", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter4_features.py",
+    "/app/test_reports/pytest/iter4.xml"
+  ],
+  "action_items": [
+    "Fix GET /api/next-record-no handling of blank title in server.py (do not pass '\\u0000' into a Mongo regex). This also fixes the 'auto → #…' label never resolving on first page load."
+  ],
+  "critical_code_review_comments": [
+    "server.py _record_no sentinel '\\u0000' is unsafe for Mongo regex — pick a safer sentinel (e.g. skip the regex lookup entirely when title is empty).",
+    "Creator.js silently swallows errors from /api/next-record-no (.catch(()=>{})) — surface at least once so bugs like the 500 above aren't invisible.",
+    "server.py still uses deprecated @app.on_event('shutdown'); migrate to FastAPI lifespan.",
+    "STL base64 payloads are stored in Mongo documents directly — risk of 16MB BSON limit for larger discs. Consider GridFS."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter4_features.py"
+  ],
+  "success_rate": {"backend": "97% (36/37)", "frontend": "100% (all 6 flows pass; the only UI anomaly traces back to the backend 500)"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "Created several TEST_* conversions via /api/press (TEST_RN42, TEST_AutoRN_unique_xyz, TEST_Over) plus UI pressings for sample_twinkle (#77, #9) and Humpty Dumpty. Factory comb was restored at the end (DELETE /api/comb).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iter4 features (stagger, record_no, overrides, comb GET/PUT/DELETE, library, scan, twin-pin flip, song overview, comb editor) work end-to-end. The ONLY failing case is GET /api/next-record-no?title= (blank) returning 500 — fix _record_no to skip the Mongo regex when title is empty. The factory comb is left intact. New backend test file: /app/backend/tests/test_iter4_features.py (autouse fixture always restores factory comb). Pressing takes 2-6s; library endpoint takes ~2s on first hit.",
+  "rca of the issue": "server.py line 140: `return {'record_no': await _record_no(title.strip()) if title.strip() else await _record_no('\\u0000')}`. When the frontend fires `/api/next-record-no?title=` on initial page load (blank title in Creator.js useEffect), the else-branch is taken. _record_no then calls db.conversions.find_one with `{'title': {'$regex': f'^{re.escape(title)}$', '$options': 'i'}}`. re.escape doesn't strip NUL bytes, so Mongo receives the regex `^\\x00$` and raises OperationFailure 'Regular expression cannot contain an embedded null byte' (pymongo errors.OperationFailure code=2). FastAPI returns 500. Reproduction: `curl $BACKEND_URL/api/next-record-no?title=` → 500. Mitigation (one of): (a) `if not title: title = None` and skip the same-title lookup, going straight to the 'top record_no + 1' query; (b) use a plain `{'title': title}` equality match (fast, index-friendly) instead of a case-insensitive regex; (c) sanitize NUL bytes out of the sentinel before building the regex."
+}

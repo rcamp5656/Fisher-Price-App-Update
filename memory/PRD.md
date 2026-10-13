@@ -84,6 +84,22 @@ on an original Fisher-Price music box record player.
   increments per new pressing; re-pressing the same title (case-insensitive) reuses its number.
   Stored as `record_no`; shown in spec sheet, history and share page. Both sides carry the number.
 
+### 2026-10-13 (session 2, batch 5 — one-note-at-a-time + 5 features)
+- **Stagger fix**: the player plucks one tine per beat; `events_to_record` moves simultaneous
+  notes to the nearest free beat (`staggered` stat); editor flags leftover same-beat notes as
+  "Chords" (amber) with a warning. Pins halved to Ø0.7 mm (R_PIN 0.35).
+- **Record number override** (`record_no` in /press; `GET /api/next-record-no?title=` for the auto preview).
+- **Twin tine control**: 22 TINES view pins on twin tracks are clickable → `overrides` {"tone-beat": slot}
+  sent to /press and stored; `to_physical(partition, comb, overrides)` on both ends.
+- **Comb re-map**: `Comb` class (22 tracks → unique pitch rows); `GET/PUT/DELETE /api/comb` stored in
+  `settings` collection; frontend live-binding `applyComb()`; CombEditor with 22 note-name inputs.
+- **Factory library**: 10 nursery rhymes transcribed as NOTE[:beats] strings (`fp.LIBRARY`),
+  `GET /api/library` → ready-to-edit analyses; LibraryPicker in the Load card.
+- **Song overview**: `POST /api/scan` (all note-ons + length); SongOverview strip with draggable
+  capture window → `start` for /analyze (per side).
+- User confirmed by magnifier: 12 walls, inner/outer walls one-sided, 10 ridges two-sided = 22 tines.
+- Tested: iteration_4.json (backend 37/37 after fixing blank-title 500 on next-record-no; all UI flows pass).
+
 ## Backlog / Remaining
 - P1: User validation of physical prints (pin height/width on the real toy).
 - P1: User to verify twin tines 8/9 sound the same pitch on their player (confirms comb mapping).

@@ -137,7 +137,7 @@ async def get_library(duration: float = 25.0):
 
 @api_router.get("/next-record-no")
 async def next_record_no(title: str = ""):
-    return {"record_no": await _record_no(title.strip()) if title.strip() else await _record_no("\u0000")}
+    return {"record_no": await _record_no(title.strip())}
 
 
 FIRST_RECORD_NO = 6
@@ -145,9 +145,11 @@ FIRST_RECORD_NO = 6
 
 async def _record_no(title: str) -> int:
     """Reuse the number of an earlier pressing with the same title, else next free."""
-    same = await db.conversions.find_one(
-        {"title": {"$regex": f"^{re.escape(title)}$", "$options": "i"}, "record_no": {"$ne": None}},
-        {"_id": 0, "record_no": 1}, sort=[("created_at", -1)])
+    same = None
+    if title:
+        same = await db.conversions.find_one(
+            {"title": {"$regex": f"^{re.escape(title)}$", "$options": "i"}, "record_no": {"$ne": None}},
+            {"_id": 0, "record_no": 1}, sort=[("created_at", -1)])
     if same:
         return same["record_no"]
     top = await db.conversions.find_one({"record_no": {"$ne": None}}, {"_id": 0, "record_no": 1},
