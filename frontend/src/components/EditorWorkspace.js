@@ -16,8 +16,9 @@ function Stat({ label, value, warn, testId }) {
 }
 
 export default function EditorWorkspace({
-  sides, active, onActive, duration, revSeconds, onRevSeconds, loop, onLoop, roll = "before", voices = 1,
+  sides, active, onActive, duration, revSeconds, onRevSeconds, loop, onLoop, roll = "before", voices = 1, externalCue = null,
 }) {
+  useEffect(() => { if (externalCue) setCue(externalCue.beat); }, [externalCue]);
   const allowChords = voices > 1;
   const side = sides.find((s) => s.key === active) || sides[0];
   const [view, setView] = useState("pitch");

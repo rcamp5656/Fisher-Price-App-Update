@@ -4,8 +4,17 @@ import { Headphones, Loader2, Download, AlertTriangle } from "lucide-react";
 import { BTN_BASE, BTN_DISABLED } from "../lib/fp";
 
 // Whole song rendered server-side as the toy plays it: 6 kHz mono, Fisher-Price notes only
-export default function SongReview({ api, file, settings, tracks, skyline, melodyFill = false, revSeconds, disabled }) {
+const SIDE_GAP = 0.6;
+
+export default function SongReview({ api, file, settings, tracks, skyline, melodyFill = false, revSeconds, disabled, onJump }) {
   const [busy, setBusy] = useState(false);
+  const [pos, setPos] = useState({ side: 0, beat: 0 });
+  const audioRef = useRef(null);
+  const locate = (t) => {
+    const side = Math.min(Math.max(0, Math.floor(t / (revSeconds + SIDE_GAP))), (out?.sides || 1) - 1);
+    const beat = Math.min(85, Math.max(0, Math.floor(((t - side * (revSeconds + SIDE_GAP)) / revSeconds) * 86)));
+    return { side, beat };
+  };
   const [error, setError] = useState(null);
   const [out, setOut] = useState(null);
   const urlRef = useRef(null);
@@ -62,7 +71,16 @@ export default function SongReview({ api, file, settings, tracks, skyline, melod
       {error && <div data-testid="render-error" className="font-mono text-xs bg-[#E63946] text-white rounded-md p-2 flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> {error}</div>}
       {out && (
         <div data-testid="render-result" className="border-2 border-[#1D3557] rounded-lg bg-[#F4F1EA] p-3 flex flex-col gap-2 font-mono text-[11px] text-[#1D3557]">
-          <audio data-testid="render-audio" controls src={out.url} className="w-full" />
+          <audio data-testid="render-audio" ref={audioRef} controls src={out.url} className="w-full" onTimeUpdate={(e) => setPos(locate(e.currentTarget.currentTime))} onSeeked={(e) => setPos(locate(e.currentTarget.currentTime))} />
+          <div className="flex items-center justify-between gap-2">
+            <span data-testid="render-position" className="text-[#457B9D]">side {pos.side + 1} of {out.sides} · beat {pos.beat}</span>
+            {onJump && (
+              <button type="button" data-testid="render-jump-button" onClick={() => onJump({ side: pos.side, beat: pos.beat, duration: out.duration, start: out.start })}
+                className="font-sans font-black text-[11px] px-2 py-1 rounded border-2 border-[#1D3557] bg-[#E9C46A] hover:bg-[#2A9D8F] hover:text-white">
+                OPEN THIS SPOT IN THE EDITOR
+              </button>
+            )}
+          </div>
           <div data-testid="render-meta" className="text-[#457B9D]">
             {out.sides} side(s) · {out.notes} toy notes · {out.duration.toFixed(1)} s of song per revolution · from {out.start.toFixed(1)} s · transposed {out.offset > 0 ? "+" : ""}{out.offset} st
             {out.score != null ? ` · ${Math.round(out.score)}% match` : ""} · {out.rate / 1000} kHz mono

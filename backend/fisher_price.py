@@ -1208,6 +1208,23 @@ def render_song(sides: List[Dict], rev_seconds: float, comb: Comb = DEFAULT_COMB
     return header + pcm
 
 
+def chord_test_partition(comb: Comb = DEFAULT_COMB) -> List[List[bool]]:
+    """One phrase three ways on one disc: single notes, two-note chords, triads.
+    Beats 2-14 ONE · 30-42 TWO · 58-70 THREE (rests between so you can tell them apart)."""
+    p = [[False] * MAX_BEAT for _ in range(comb.tones)]
+    melody = [3, 4, 5, 3, 2, 1]                 # E5 G5 A5 E5 D5 C5 in Fred's notation (tones)
+    harmony2 = [[1], [2], [3], [1], [0], [0]]  # a third / fifth below
+    harmony3 = [[1, 0], [2, 0], [3, 1], [1, 0], [0, 1], [0, 3]]
+    for section, extra in ((2, None), (30, harmony2), (58, harmony3)):
+        for i, tone in enumerate(melody):
+            b = section + i * 2
+            p[tone][b] = True
+            if extra:
+                for t in extra[i]:
+                    p[t][b] = True
+    return p
+
+
 def _finish_analysis(rec: Dict, duration: float, start: float) -> Dict:
     rec["notes_used"] = [{"midi": m, "name": note_name(m)} for m in rec["notes_used"]]
     rec["duration"] = duration

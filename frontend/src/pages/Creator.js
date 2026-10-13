@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
-  Disc3, Music4, Wand2, AlertTriangle, Loader2, Grid3X3, Box, ListMusic, Eraser,
-} from "lucide-react";
+  Disc3, Music4, Wand2, AlertTriangle, Loader2, Grid3X3, Box, ListMusic, Eraser, FlaskConical } from "lucide-react";
 import RecordViewer from "../components/RecordViewer";
 import UploadZone from "../components/UploadZone";
 import SettingsPanel from "../components/SettingsPanel";
@@ -171,6 +170,32 @@ export default function Creator() {
   };
 
   filesRef.current = files.a;
+  // review audio → editor: open the side that was playing, cue the beat
+  const [jump, setJump] = useState(null);
+  const jumpTo = ({ side, beat, duration, start }) => {
+    const newStart = Math.round((start + side * duration) * 100) / 100;
+    skipStale.current = true;
+    set({ autoFit: false, duration: Math.round(duration * 10) / 10 });
+    fitStart.current = null;
+    setStarts((p) => ({ ...p, a: newStart }));
+    setJump({ beat, n: Date.now() });
+    setTab("notes");
+    if (!analysis) setTimeout(() => analyzeRef.current && analyzeRef.current(), 50);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const [testBusy, setTestBusy] = useState(false);
+  const makeTestDisc = async () => {
+    setTestBusy(true); setError(null);
+    try {
+      const form = new FormData();
+      form.append("thickness", String(s.twoSided ? 3 : s.thickness));
+      form.append("pin_radius", String(s.pinRadius));
+      form.append("engrave", String(!!s.engrave));
+      const { data } = await axios.post(`${API}/testdisc`, form);
+      openHistory(data); loadHistory();
+    } catch (e) { setError(e?.response?.data?.detail || "Could not press the test disc."); }
+    finally { setTestBusy(false); }
+  };
   const onAnalyze = async () => {
     if (!canAnalyze) return;
     setBusy("analyze"); setError(null); setNotice(null);
@@ -319,7 +344,7 @@ export default function Creator() {
               <EditorWorkspace
                 sides={sides} active={active} onActive={setActive}
                 duration={s.duration} revSeconds={revSeconds} onRevSeconds={setRevSeconds}
-                loop={loop} onLoop={setLoop} roll={s.roll} voices={s.voices}
+                loop={loop} onLoop={setLoop} roll={s.roll} voices={s.voices} externalCue={jump}
               />
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">
@@ -365,6 +390,11 @@ export default function Creator() {
               </button>
             </div>
             <UploadZone file={files.a} onFile={onFileA} onError={setError} testId="midi-upload-zone" label={needsB ? "Side A" : null} />
+            <button type="button" data-testid="test-disc-button" disabled={testBusy || !!busy} onClick={makeTestDisc}
+              className={`${BTN_BASE} text-xs py-2 ${testBusy || busy ? BTN_DISABLED : "bg-white hover:bg-[#E9C46A]"}`}
+              title="One phrase pressed three ways — single notes, two-note chords, triads — so one print tells you what the comb can handle">
+              <FlaskConical className="h-4 w-4" /> {testBusy ? "PRESSING TEST DISC…" : "PRESS A CHORD TEST DISC (1·2·3 NOTES)"}
+            </button>
             {scans.a && (
               <TrackPicker scan={scans.a} tracks={tracks.a} onTracks={(v) => setTracks((p) => ({ ...p, a: v }))} skyline={skyline} onSkyline={setSkyline} melodyFill={melodyFill} onMelodyFill={setMelodyFill} />
             )}
@@ -412,7 +442,7 @@ export default function Creator() {
           {result && <DownloadPanel api={API} result={result} />}
 
           {files.a && scans.a && (
-            <SongReview api={API} file={files.a} settings={s} tracks={tracks.a} skyline={skyline} melodyFill={melodyFill} revSeconds={revSeconds} disabled={!!busy} />
+            <SongReview api={API} file={files.a} settings={s} tracks={tracks.a} skyline={skyline} melodyFill={melodyFill} revSeconds={revSeconds} disabled={!!busy} onJump={jumpTo} />
           )}
           {files.a && scans.a && (
             <AlbumPanel
@@ -435,7 +465,7 @@ export default function Creator() {
 
         {result && <SpecSheet result={result} />}
         <PrintGuide defaultOpen={!!result} />
-        <RecordShelf history={history} onOpen={openHistory} onGap={(n) => { set({ recordNo: String(n) }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+        <RecordShelf history={history} current={result} onOpen={openHistory} onGap={(n) => { set({ recordNo: String(n) }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
         <HistoryPanel api={API} history={history} onPreview={openHistory} />
 
         <footer className="col-span-12 font-mono text-[11px] text-[#457B9D] text-center pt-4">

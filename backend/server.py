@@ -598,6 +598,23 @@ async def album_zip(album_id: str):
                     headers={"Content-Disposition": f'attachment; filename="{name}-album.zip"'})
 
 
+@api_router.post("/testdisc", response_model=ConversionSummary)
+async def test_disc(thickness: float = Form(3.0), pin_radius: float = Form(0.8), engrave: bool = Form(True)):
+    """Chord test disc: the same phrase as single notes, two-note chords and triads."""
+    comb = await _comb()
+    partition = fp.chord_test_partition(comb)
+    title = "CHORD TEST 1-2-3"
+    record_no = await _record_no(title)
+    out = await run_in_threadpool(fp.press, partition, title, max(1.5, min(8.0, thickness)), None, "",
+                                  bool(engrave), record_no, comb, None, None,
+                                  max(0.4, min(1.0, pin_radius)), "before", True, 3)
+    meta = {"note_count": sum(sum(r) for r in partition), "exact": 0, "adjusted": 0, "merged": 0,
+            "offset": 0, "duration": 25.0}
+    return await _store(str(uuid.uuid4()), "chord-test.mid", title, out, meta, None, partition, None,
+                        record_no, None, None, {"tracks": None, "skyline": False, "chords": True, "voices": 3,
+                                                 "test_disc": True})
+
+
 @api_router.post("/convert", response_model=ConversionSummary)
 async def convert(
     file: UploadFile = File(...),

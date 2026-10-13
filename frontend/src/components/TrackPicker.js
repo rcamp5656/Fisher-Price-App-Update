@@ -27,6 +27,8 @@ export default function TrackPicker({ scan, tracks, onTracks, skyline, onSkyline
   if (!scan || !scan.tracks || scan.tracks.length < 2) return null;
 
   const all = scan.tracks.filter((t) => !t.drums).map((t) => t.index);
+  const top3 = [...scan.tracks].filter((t) => !t.drums).sort((a, b) => b.melody_score - a.melody_score).slice(0, 3);
+  const why = (t) => `${t.poly <= 1.05 ? "single line" : `${t.poly.toFixed(1)} notes stacked`} · ${t.density.toFixed(1)} notes/s · ${nn(t.low)}–${nn(t.high)} · ${Math.round((t.span / Math.max(scan.total, 1)) * 100)}% of song`;
   const sel = new Set(tracks && tracks.length ? tracks : all);
   const toggle = (idx) => {
     const next = new Set(sel);
@@ -71,6 +73,23 @@ export default function TrackPicker({ scan, tracks, onTracks, skyline, onSkyline
       <p className="font-mono text-[10px] text-[#457B9D]">
         A full band arrangement can't fit 16 tines — pick the line that carries the tune. ★ = most melody-like. Drums have no tine on the toy and are skipped.
       </p>
+      <div data-testid="top3-by-ear" className="flex flex-wrap items-center gap-1 font-mono text-[10px]">
+        <span className="text-[#457B9D] mr-1">rank by ear — tap to hear, tap again to use:</span>
+        {top3.map((t, i) => {
+          const chosen = sel.size === 1 && sel.has(t.index);
+          return (
+            <button
+              key={t.index} type="button" data-testid={`top3-${i + 1}`}
+              onClick={() => { if (playingIdx === t.index) { stop(); onTracks([t.index]); } else audition(t); }}
+              title={`${why(t)} · melody score ${t.melody_score}`}
+              className={`px-2 py-1 rounded border-2 border-[#1D3557] flex items-center gap-1 ${chosen ? "bg-[#1D3557] text-white" : playingIdx === t.index ? "bg-[#FFB703]" : "bg-white hover:bg-[#E9C46A]"}`}
+            >
+              {playingIdx === t.index ? <Square className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+              {i + 1}. {label(t).slice(0, 22)} <span className="opacity-70">{Math.round(t.melody_score)}</span>
+            </button>
+          );
+        })}
+      </div>
       <div className="flex flex-col gap-1 max-h-72 overflow-y-auto pr-1">
         {scan.tracks.map((t) => {
           const on = !t.drums && sel.has(t.index);
@@ -97,6 +116,7 @@ export default function TrackPicker({ scan, tracks, onTracks, skyline, onSkyline
                   </button>
                 )}
               </div>
+              {top3.includes(t) && <div data-testid={`track-why-${t.index}`} className="font-mono text-[9px] text-[#457B9D] pl-6">why: {why(t)} · score {Math.round(t.melody_score)}</div>}
               <Strip track={t} total={scan.total} selected={on} />
             </div>
           );
