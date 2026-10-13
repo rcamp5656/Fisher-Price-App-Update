@@ -1,0 +1,27 @@
+{
+  "summary": "Iter18 validates voices (simple chords) end-to-end. Backend: 9 new tests in test_iter18_voices.py all pass; full regression 129/129 green (115 prior + 5 iter17 + 9 iter18). Covers analyze baby1.mid start=18.7 dur=25 at voices 1/2/3/16 (max pins/beat <= voices, pins+merged+dropped==note_count), press 4-note chord {1,3,5,7}@beat10 at voices 2 (keeps top=7 & bottom=1, extras land in beats 6..14, mesh_check.ok=true, response.voices=2, chords=true), voices 3 (keeps 3 at beat10), voices 1 (max 1/beat, rolled), voices=0 and voices=17 both 422, render voices=2 returns audio/wav with X-Sample-Rate=8000. Frontend (public URL baby1.mid): voices-1 is active on first paint; voices-2 sets hint='Simple chords — up to 2…'; stale-badge is absent pre-load; after track-mono-mix + LOAD NOTES, editor max 2 pins per shared beat, stat-chords=0 at voices=2 (stat-notes=134); clicking voices-1 flags stale and makes stat-chords jump to 96 without reloading; reload yields max 1/beat, stat-chords=0. voices-3 + CUT THE RECORD produces spec sheet with 'PRINT READY', latest /api/conversions entry has voices=3. No console errors (only harmless three.js deprecation warnings).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter18_voices.py",
+    "/app/test_reports/pytest/iter18.xml",
+    "/app/test_reports/pytest/iter18_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "fisher_price.py now ~1400 lines — still above the 700-line split threshold flagged in iter17. The new limit_voices adds a sibling to stagger_partition/make_playable; grouping them in a partition.py module would improve testability.",
+    "limit_voices picks keepers as (top, bottom, middle-closest-to-centroid). For voices=2 the mid line is dropped before falling back to roll. That matches spec but is subtle; consider a docstring example to prevent future regressions.",
+    "ConversionSummary.chords default is False but server coerces to True whenever voices<16. The invariant 'chords == (voices>1)' is enforced in server.py in two places (press body + album _song_opts); consider a Pydantic validator or compute chords on serialization to keep it in one spot.",
+    "SettingsPanel voices-16 button label is 'ALL' but the hint reads 'Experimental — every note stays on its beat; dense mixes may jam the comb.' Consider a dedicated data-testid for the hint variant or an aria-label distinguishing 1/2/3/16 for assistive tech."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter18_voices.py (new, 9 tests)"
+  ],
+  "success_rate": {"backend": "100% (129/129 pytest, 9/9 new iter18)", "frontend": "100% of iter18 assertions, 0 console errors"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "No persistent seed. Press tests build in-memory 16x86 partitions and POST to /api/press.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter18 added the voices (1/2/3/16) setting. Backend form field `voices` (int, ge=1 le=16 on /press JSON; max(1,min(16,v)) in form endpoints). fisher_price.limit_voices keeps the top note (hits[-1]), then bottom (hits[0]), then middle tones closest to centroid, and rolls extras to a free beat within +/-4 (prefer leans by roll). analyze/autofit/plan_song/press/render/album all accept voices and coerce chords=True when voices<16. ConversionSummary.voices is persisted on the record. Editor marks a beat as a chord conflict only when it carries more than `voices` pins (chordConflicts(p, voices) in /app/frontend/src/lib/fp.js). MAKE PLAYABLE uses thinRepeats(partition) when voices>1 (no stagger) so chords are preserved. voices-16 bypasses chord-highlighting entirely (returns empty Set).",
+  "rca of the issue": "Not a bug — feature verification pass for the new voices setting. All 9 backend asserts (per-beat caps, keep-top+bottom semantics, bounds, response fields, mesh_check, render) and all 7 frontend asserts (default state, hint text, stale badge, max pins/beat at 2/3/1, stat-chords 0 at voices>=note-count, PRINT READY, voices=3 persisted) pass as specified."
+}

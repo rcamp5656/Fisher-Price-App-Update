@@ -146,6 +146,32 @@ on an original Fisher-Price music box record player.
   marking stale; dragging the duration slider / match-toy turns auto-fit off.
 - Tested: iteration_11.json (backend 76/76 after max_tries fix, frontend 100 %).
 
+### 2026-10-13 (session 3, part 3 — multi-track MIDI, album, review audio, chords)
+- **Track picker** (`TrackPicker.js`, `scan_tracks`): /api/scan returns per-track summaries
+  (name, GM instrument, notes, range, strip, melody_score), suggested melody track, song title.
+  Drums (ch 10) never used; bass lines demoted (name/program/mean<55 → ×0.4), name hints
+  (melody/lead/vocal…) +20. Auto-picks the single best melody track; buttons "melody only" /
+  "mono mix" (all tracks + skyline); `skyline` option; `melody_fill` option (default on) borrows
+  the skyline of other non-bass instruments where the melody rests > 1.5 s.
+- **Swap-file bug fixed**: uploading a new MIDI drops the old analysis, disables LOAD NOTES until
+  the scan finishes, resets tracks/start, discards obsolete analysis responses; Disc title auto-
+  fills from the MIDI first-track name or prettified file name.
+- **Album** (`POST /api/album`, background task, `GET /api/album/{id}`, `/zip`): whole song →
+  consecutive 86-beat sides, one key + one tempo (auto-fit), pressed as numbered records
+  (two-sided pairs or single), ZIP with STLs/halves/scad/fpr/mesh-check/README. `AlbumPanel.js`.
+- **Review audio** (`POST /api/render`, `SongReview.js`): whole song as the toy plays it →
+  8 kHz 16-bit MONO WAV (pluck synth, partials < Nyquist), headers X-Sides/X-Notes/…
+- **Pins**: 1.6 mm-base triangle ramps buried 0.5 mm into the wall (PIN_BASE/PIN_SINK, SCAD too).
+  Viewer zooms to 12 units. Two-sided downloads now lead with HALF A / HALF B (full disc = link,
+  needs supports).
+- **Auto-fit** also tries the runner-up transpositions ("tines up or down"); budget respected.
+- **Stagger instead of merge**: a second same-pitch note on a used beat moves to the nearest free
+  beat (±8); only a full disc counts as "No room" (stat-lost). Capacity: 86 notes/side mono.
+- **Voices / simple chords**: `voices` 1 (factory, rolled) · 2 · 3 (keep top, bottom, middle;
+  extras roll within ±4 or drop) · 16 (full chords); on analyze/autofit/render/album/press and
+  stored on records. Editor flags beats exceeding `voices`.
+- Tested: iteration_12 … iteration_18.json (backend 129/129, all UI flows pass).
+
 ## Backlog / Remaining
 - P1: User validation of physical prints (pin height/width on the real toy).
 - P1: User to verify twin tines 8/9 sound the same pitch on their player (confirms comb mapping).
