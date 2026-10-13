@@ -211,6 +211,12 @@ on an original Fisher-Price music box record player.
 - **Dedication dial + side-B toggle**: `ded_height` (2.0–3.5 mm, default 2.4) and `ded_b` on press/album/testdisc,
   stored on records, SCAD honours both; Settings slider "Dedication letters" with nozzle hints, toggle shown for
   two-sided discs. **Shelf colours**: RecordShelf album tiles/chips/tags use the sleeve-card palette (`ALBUM_COLOURS`).
+- **Offline without MongoDB**: `backend/filedb.py` (folder-backed Motor stand-in: one JSON per doc in
+  `data/records/<collection>/`), selected when `FP_STORAGE=files` or MONGO_URL is unset; start scripts write
+  that .env when mongod is absent. Verified against press/list/get/stl/defaults/numbering/testdisc.
+- **Dedication font**: `ded_font` bold|rounded|script (DejaVu Sans Bold / Comfortaa / Pacifico, TTFs in
+  backend/fonts, thin fonts emboldened 0.12/0.08 mm); Settings picker; SCAD `mark(..., font)` + `dedFont`.
+- **Shelf album filter**: tap an album name → spotlight its discs (others dim 20 %), tap again to clear.
 - Direct ZIP link given to user: {API}/api/source.zip.
 - Verified: curl on all new endpoints, pytest (analyze/press/api/pack green), browser smoke (shared ctx, save default).
 

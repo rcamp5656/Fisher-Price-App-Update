@@ -253,6 +253,24 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
               ? "Good match for a 0.4 mm nozzle — strokes ≈ 0.45 mm, still clear of the title arc and record number."
               : "Bold lettering — easiest to read, ring now sits 10.3–13.8 mm from the spindle (title starts at 14 mm)."}
         </p>
+        <div className="grid grid-cols-3 gap-1 mt-2">
+          {[["bold", "BOLD", "DejaVu Sans Bold — crispest print"], ["rounded", "ROUNDED", "Comfortaa — soft, friendly letters"], ["script", "SCRIPT", "Pacifico — handwritten dedication feel (3 mm+ recommended)"]].map(([v, l, hint]) => (
+            <button
+              key={v} type="button" data-testid={`ded-font-${v}`} title={hint}
+              onClick={() => set({ dedFont: v })}
+              className={`font-sans font-bold text-xs py-1.5 rounded-md border-2 border-[#1D3557] ${(s.dedFont || "bold") === v ? "bg-[#1D3557] text-white" : "bg-white hover:bg-[#E9C46A]"}`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        <p className="font-mono text-[10px] text-[#457B9D] mt-1" data-testid="ded-font-hint">
+          {(s.dedFont || "bold") === "script"
+            ? "Pacifico script — strokes are thickened 0.08 mm so they print; use 3.0 mm+ letters. OpenSCAD needs the TTF from backend/fonts."
+            : (s.dedFont || "bold") === "rounded"
+              ? "Comfortaa rounded — strokes thickened 0.12 mm for the nozzle; gentle look, still easy to read."
+              : "DejaVu Sans Bold — the factory-style lettering used for the title arc."}
+        </p>
         {s.twoSided && (
           <label className="flex items-center justify-between mt-2 font-mono text-xs">
             <span>Dedication ring on side B too</span>

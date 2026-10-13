@@ -25,11 +25,10 @@ if %errorlevel%==0 (
   if not exist "data\db" mkdir "data\db"
   echo  [1/4] Starting MongoDB ^(data\db^) ...
   start "FP MongoDB" /min cmd /c "mongod --dbpath data\db --port 27017"
+  set STORAGE=mongo
 ) else (
-  echo  [1/4] MongoDB ^(mongod^) is not on PATH.
-  echo        Install MongoDB Community Server: https://www.mongodb.com/try/download/community
-  echo        ^(choose "Install MongoDB as a Service" and it starts by itself^)
-  echo        Continuing - the app needs MongoDB on mongodb://localhost:27017 to save records.
+  echo  [1/4] MongoDB not found - records will be saved as files in  data\records  ^(no install needed^).
+  set STORAGE=files
 )
 
 echo  [2/4] Backend: Python packages ...
@@ -38,8 +37,13 @@ call backend\.venv\Scripts\activate.bat
 python -m pip install --quiet --upgrade pip
 pip install --quiet -r backend\requirements-local.txt || (echo  [!] pip install failed & pause & exit /b 1)
 if not exist "backend\.env" (
-  > backend\.env echo MONGO_URL=mongodb://localhost:27017
-  >> backend\.env echo DB_NAME=fisher_price
+  if "%STORAGE%"=="mongo" (
+    > backend\.env echo MONGO_URL=mongodb://localhost:27017
+    >> backend\.env echo DB_NAME=fisher_price
+  ) else (
+    > backend\.env echo FP_STORAGE=files
+    >> backend\.env echo DATA_DIR=../data/records
+  )
 )
 start "FP Backend  (http://localhost:8001)" cmd /k "cd /d "%~dp0backend" && call .venv\Scripts\activate.bat && uvicorn server:app --host 0.0.0.0 --port 8001"
 

@@ -7,17 +7,16 @@ ONE-CLICK START
   macOS   : double-click  start-mac.command   (first time: right-click → Open, then "Open" to allow it)
   Linux   : ./start-linux.sh
 
-  The script checks for Python, Node.js and MongoDB, creates the two .env files,
+  The script checks for Python and Node.js, creates the two .env files,
   installs the packages (first run: a few minutes), starts the backend on port 8001
   and the web app on port 3000, then opens http://localhost:3000 in your browser.
 
 WHAT YOU NEED INSTALLED ONCE
   Python 3.10 or newer ....... https://www.python.org/downloads/   (Windows: tick "Add python.exe to PATH")
   Node.js LTS ................ https://nodejs.org/
-  MongoDB Community Server ... https://www.mongodb.com/try/download/community
-                               Windows: choose "Install MongoDB as a Service" — it then starts by itself.
-                               macOS:   brew tap mongodb/brew && brew install mongodb-community
-                               (Records, albums, the comb profile and your test-disc default are stored there.)
+  MongoDB .................... OPTIONAL. Without it, every record / album / setting is saved as a JSON file
+                               in the  data/records  folder next to the start script (back it up by copying
+                               the folder). If MongoDB is installed and running, the script uses it instead.
 
 STOPPING
   Windows: close the two black windows ("FP Backend", "FP Frontend").
@@ -29,12 +28,14 @@ PROBLEMS
   Blank page / "network error"→ the backend is not running; check the FP Backend window / data-backend.log.
   No sound in the preview     → press the TEST button next to the play controls; the browser must allow
                                 audio on the page (click anywhere once) and the tab must not be muted.
-  Cannot save records         → MongoDB is not running on mongodb://localhost:27017 (see above).
+  Cannot save records         → check the data/records folder is writable (file mode), or that MongoDB is
+                                running if backend/.env has MONGO_URL.
 
 MANUAL START (if you prefer typing)
   backend : cd backend && python -m venv .venv && (.venv\Scripts\activate | source .venv/bin/activate)
             pip install -r requirements-local.txt
-            echo MONGO_URL=mongodb://localhost:27017 > .env && echo DB_NAME=fisher_price >> .env
+            echo FP_STORAGE=files > .env && echo DATA_DIR=../data/records >> .env
+            (or MONGO_URL=mongodb://localhost:27017 + DB_NAME=fisher_price to use MongoDB)
             uvicorn server:app --host 0.0.0.0 --port 8001
   frontend: cd frontend && npm install --legacy-peer-deps
             echo REACT_APP_BACKEND_URL=http://localhost:8001 > .env

@@ -10,6 +10,7 @@ concentric tracks. As the disc rotates, the pins pluck the music box tines.
 """
 import bisect
 import math
+from pathlib import Path
 import io
 import re
 from typing import List, Dict, Tuple, Optional
@@ -759,6 +760,14 @@ DEDICATION = "Dedicated To My Fiancée Barbara"
 DED_R = 12.0
 DED_H = 2.4
 DED_ARC = 240.0
+# dedication typefaces: key -> (matplotlib font kwargs, OpenSCAD font name, stroke embolden mm)
+_FONT_DIR = Path(__file__).parent / "fonts"
+DED_FONTS = {
+    "bold": (dict(family="DejaVu Sans", weight="bold"), "DejaVu Sans:style=Bold", 0.0),
+    "rounded": (dict(fname=str(_FONT_DIR / "Comfortaa[wght].ttf")), "Comfortaa:style=Bold", 0.12),
+    "script": (dict(fname=str(_FONT_DIR / "Pacifico-Regular.ttf")), "Pacifico", 0.08),
+}
+DED_FONT = "bold"
 DED_CENTRE = 0.0        # centred on the right (3 o'clock), opposite the side numeral
 
 
@@ -769,24 +778,25 @@ def _flip(H):
     return m
 
 
-def _text_path(title: str):
+def _text_path(title: str, font: str = "bold"):
     from matplotlib.textpath import TextPath
     from matplotlib.font_manager import FontProperties
-    return TextPath((0, 0), title, size=10, prop=FontProperties(**_FONT))
+    kw = DED_FONTS.get(font, DED_FONTS["bold"])[0]
+    return TextPath((0, 0), title, size=10, prop=FontProperties(**kw))
 
 
-def _text_scale(title: str, r: float = LABEL_R, h: float = LABEL_MAX_H, arc: float = LABEL_MAX_ARC) -> float:
+def _text_scale(title: str, r: float = LABEL_R, h: float = LABEL_MAX_H, arc: float = LABEL_MAX_ARC, font: str = "bold") -> float:
     """Scale factor mapping font units -> mm so letters fit height and arc."""
-    ext = _text_path(title).get_extents()
+    ext = _text_path(title, font).get_extents()
     max_len = math.radians(arc) * r
     return min(h / max(ext.height, 1e-6), max_len / max(ext.width, 1e-6))
 
 
-def _text_shape(title: str, r: float = LABEL_R, h: float = LABEL_MAX_H, arc: float = LABEL_MAX_ARC):
+def _text_shape(title: str, r: float = LABEL_R, h: float = LABEL_MAX_H, arc: float = LABEL_MAX_ARC, font: str = "bold"):
     """Flat text outline, scaled, centred on x=0, baseline band centred on y=0."""
     from shapely.geometry import Polygon
     from shapely import affinity
-    tp = _text_path(title)
+    tp = _text_path(title, font)
     shape = None
     for ring in tp.to_polygons():
         if len(ring) < 3:
@@ -798,9 +808,13 @@ def _text_shape(title: str, r: float = LABEL_R, h: float = LABEL_MAX_H, arc: flo
     if shape is None or shape.is_empty:
         return None
     minx, miny, maxx, maxy = shape.bounds
-    s = _text_scale(title, r, h, arc)
+    s = _text_scale(title, r, h, arc, font)
     shape = affinity.scale(shape, s, s, origin=(0, 0))
-    return affinity.translate(shape, -(minx + maxx) / 2 * s, -(miny + maxy) / 2 * s)
+    shape = affinity.translate(shape, -(minx + maxx) / 2 * s, -(miny + maxy) / 2 * s)
+    fat = DED_FONTS.get(font, DED_FONTS["bold"])[2]
+    if fat:
+        shape = shape.buffer(fat, join_style=1)   # thicken thin strokes so they survive the nozzle
+    return shape
 
 
 def _bend(shape, r: float = LABEL_R, centre: float = ARC_CENTRE):
@@ -856,7 +870,8 @@ def _extrude_label(shapes, H: float) -> List:
     return meshes
 
 
-def _text_meshes(title: str, H: float, number: int = 0, dedication: str = DEDICATION, ded_height: float = DED_H) -> List:
+def _text_meshes(title: str, H: float, number: int = 0, dedication: str = DEDICATION, ded_height: float = DED_H,
+                 ded_font: str = DED_FONT) -> List:
     title = (title or "").strip()
     shapes = []
     if title:
@@ -864,7 +879,7 @@ def _text_meshes(title: str, H: float, number: int = 0, dedication: str = DEDICA
         if shape is not None:
             shapes.append(_bend(shape))
     if dedication:
-        ded = _text_shape(dedication, DED_R, ded_height, DED_ARC)
+        ded = _text_shape(dedication, DED_R, ded_height, DED_ARC, ded_font)
         if ded is not None:
             shapes.append(_bend(ded, DED_R, DED_CENTRE))
     if number:
@@ -873,20 +888,20 @@ def _text_meshes(title: str, H: float, number: int = 0, dedication: str = DEDICA
 
 
 def label_glyphs(title: str, r: float = LABEL_R, h: float = LABEL_MAX_H, arc: float = LABEL_MAX_ARC,
-                 centre: float = ARC_CENTRE) -> List[Tuple[str, float, float]]:
+                 centre: float = ARC_CENTRE, font: str = "bold") -> List[Tuple[str, float, float]]:
     """Per-character (char, angle_deg, size_mm) placements for OpenSCAD."""
     title = (title or "").strip()
     if not title:
         return []
-    s = _text_scale(title, r, h, arc)
-    full = _text_path(title).get_extents()
+    s = _text_scale(title, r, h, arc, font)
+    full = _text_path(title, font).get_extents()
     x_centre = (full.x0 + full.x1) / 2
     out = []
     prev_x1 = 0.0
     for i, ch in enumerate(title):
         if ch.isspace():
             continue
-        ext = _text_path(title[: i + 1]).get_extents()
+        ext = _text_path(title[: i + 1], font).get_extents()
         x_mid = (prev_x1 + ext.x1) / 2 if i else (ext.x0 + ext.x1) / 2
         prev_x1 = ext.x1
         angle = math.degrees(centre) - math.degrees((x_mid - x_centre) * s / r)
@@ -929,7 +944,7 @@ def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
                title_b: str = "", marks: bool = True, record_no: int = 6,
                comb: Comb = DEFAULT_COMB, overrides: Dict = None, overrides_b: Dict = None,
                pin_radius: float = R_PIN, flat_back: bool = False,
-               ded_height: float = DED_H, ded_b: bool = True):
+               ded_height: float = DED_H, ded_b: bool = True, ded_font: str = DED_FONT):
     H = float(thickness)
     base = _cyl(R_STOCK, H, H / 2)
     two_sided = partition_b is not None
@@ -959,11 +974,11 @@ def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
     # pins (bumps) refill groove segments up to the surface
     adds = _pin_meshes(partition, H, comb, overrides, pin_radius)
     pin_count = len(adds)
-    adds.extend(_text_meshes(title, H, record_no if marks else 0, DEDICATION, ded_height))
+    adds.extend(_text_meshes(title, H, record_no if marks else 0, DEDICATION, ded_height, ded_font))
     if two_sided:
         side_b = _pin_meshes(partition_b, H, comb, overrides_b, pin_radius)
         pin_count += len(side_b)
-        side_b.extend(_text_meshes(title_b, H, record_no if marks else 0, DEDICATION if ded_b else "", ded_height))
+        side_b.extend(_text_meshes(title_b, H, record_no if marks else 0, DEDICATION if ded_b else "", ded_height, ded_font))
         for m in side_b:
             m.apply_transform(flip)
         adds.extend(side_b)
@@ -1006,6 +1021,7 @@ labelA = "{TITLE_A}";
 labelB = "{TITLE_B}";
 labelR = 16.3;
 dedR = {DED_R};       // "{DEDICATION}" — small arc inside the title
+dedFont = "{DED_FONT_SCAD}";   // install the TTF from backend/fonts if OpenSCAD cannot find it
 markR = 8.5;
 hText = 0.6;
 pinDepth = {PIN_R};
@@ -1065,10 +1081,10 @@ module glyph(ch, angle, size, onSecondSide) {{
 }}
 
 // Raised character at a polar position, letter top facing outward
-module mark(ch, angle, r, size, onSecondSide) {{
+module mark(ch, angle, r, size, onSecondSide, font="DejaVu Sans:style=Bold") {{
         onSide(onSecondSide) rotate(a=angle-90) translate(v=[0, r, hStock-hInset-overlap]) {{
                 linear_extrude(height=hText+overlap) {{
-                        text(ch, size=size, halign="center", valign="center", font="DejaVu Sans:style=Bold");
+                        text(ch, size=size, halign="center", valign="center", font=font);
                 }}
         }}
 }}
@@ -1113,7 +1129,7 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
             label_a: str = None, label_b: str = None, marks: bool = True,
             record_no: int = 6, comb: Comb = DEFAULT_COMB,
             overrides: Dict = None, overrides_b: Dict = None,
-            pin_radius: float = R_PIN, ded_height: float = DED_H, ded_b: bool = True) -> str:
+            pin_radius: float = R_PIN, ded_height: float = DED_H, ded_b: bool = True, ded_font: str = DED_FONT) -> str:
     label_a = title if label_a is None else label_a
     label_b = title_b if label_b is None else label_b
     lines = _scad_pins(partition, "false", comb, overrides)
@@ -1122,8 +1138,8 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
         lines.extend(_scad_pins(partition_b, "true", comb, overrides_b))
     labels = [f'\t\tglyph("{_scad_str(ch)}",{ang},{size},false);'
               for ch, ang, size in label_glyphs(label_a)]
-    ded = lambda side: [f'\t\tmark("{_scad_str(ch)}",{ang},dedR,{size},{side});'
-                        for ch, ang, size in label_glyphs(DEDICATION, DED_R, ded_height, DED_ARC, DED_CENTRE)]
+    ded = lambda side: [f'\t\tmark("{_scad_str(ch)}",{ang},dedR,{size},{side},dedFont);'
+                        for ch, ang, size in label_glyphs(DEDICATION, DED_R, ded_height, DED_ARC, DED_CENTRE, ded_font)]
     labels += ded("false")
     if marks:
         labels += [f'\t\tmark("{record_no}",180,markR,3.2,false);', '\t\tdash(false);']
@@ -1143,6 +1159,7 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
         PIN_SINK=PIN_SINK,
         DED_R=DED_R,
         DEDICATION=_scad_str(DEDICATION),
+        DED_FONT_SCAD=DED_FONTS.get(ded_font, DED_FONTS["bold"])[1],
         TWO_SIDED="true" if partition_b is not None else "false",
         TITLE_A=_scad_str(title),
         TITLE_B=_scad_str(title_b) if partition_b is not None else "",
@@ -1307,7 +1324,7 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
           engrave: bool = True, record_no: int = 6, comb: Comb = DEFAULT_COMB,
           overrides: Dict = None, overrides_b: Dict = None,
           pin_radius: float = R_PIN, roll: str = "before", chords: bool = False, voices: int = 16,
-          ded_height: float = DED_H, ded_b: bool = True) -> Dict:
+          ded_height: float = DED_H, ded_b: bool = True, ded_font: str = DED_FONT) -> Dict:
     """Partition(s) -> STL / SCAD / FPR files. Two-sided discs also get two
     flat-backed halves to print pins-up and glue back to back (no supports)."""
     label_a = title if engrave else ""
@@ -1316,7 +1333,8 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
     if partition_b is not None:
         toy_fixes += (sum(limit_voices(partition_b, voices, comb, roll)) if chords else stagger_partition(partition_b, comb, roll)) + sum(make_playable(partition_b, comb))
     ded_height = max(2.0, min(3.5, float(ded_height)))
-    common = dict(marks=engrave, record_no=record_no, comb=comb, pin_radius=pin_radius, ded_height=ded_height, ded_b=ded_b)
+    ded_font = ded_font if ded_font in DED_FONTS else DED_FONT
+    common = dict(marks=engrave, record_no=record_no, comb=comb, pin_radius=pin_radius, ded_height=ded_height, ded_b=ded_b, ded_font=ded_font)
     mesh, pin_count = build_mesh(partition, thickness, label_a, partition_b, label_b,
                                  overrides=overrides, overrides_b=overrides_b, **common)
     mesh, mesh_check = heal_mesh(mesh)
@@ -1340,12 +1358,13 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
         "scad": "// Fisher-Price Record Maker - Dedicated To My Fiancee Barbara - Copyright 2026 Russ Campbell. All rights reserved.\n" + to_scad(partition, thickness, title, partition_b, title_b, label_a, label_b,
                         marks=engrave, record_no=record_no, comb=comb,
                         overrides=overrides, overrides_b=overrides_b, pin_radius=pin_radius,
-                        ded_height=ded_height, ded_b=ded_b),
+                        ded_height=ded_height, ded_b=ded_b, ded_font=ded_font),
         "stats": {
             "pin_count": pin_count,
             "pin_radius": pin_radius,
             "ded_height": ded_height,
             "ded_b": ded_b,
+            "ded_font": ded_font,
             "toy_fixes": toy_fixes,
             "mesh_check": mesh_check,
             "roll": roll,

@@ -29,7 +29,7 @@ const emptyAnalysis = () => ({
 const DEFAULTS = {
   title: "", titleB: "", thickness: 3.0, duration: TOY_REV_SECONDS, autoTranspose: true,
   manualOffset: 0, twoSided: false, sideMode: "continue", engrave: true, recordNo: "", nextNo: null,
-  pinRadius: 0.8, roll: "before", autoFit: true, chords: false, voices: 1, dedHeight: 2.4, dedB: true,
+  pinRadius: 0.8, roll: "before", autoFit: true, chords: false, voices: 1, dedHeight: 2.4, dedB: true, dedFont: "bold",
 };
 
 export default function Creator() {
@@ -201,6 +201,7 @@ export default function Creator() {
       form.append("thickness", String(s.twoSided ? 3 : s.thickness));
       form.append("pin_radius", String(s.pinRadius));
       form.append("ded_height", String(s.dedHeight));
+      form.append("ded_font", s.dedFont || "bold");
       form.append("engrave", String(!!s.engrave));
       const { data } = await axios.post(`${API}/testdisc`, form);
       openHistory(data); loadHistory();
@@ -272,6 +273,7 @@ export default function Creator() {
         pin_radius: s.pinRadius,
         ded_height: s.dedHeight,
         ded_b: s.dedB !== false,
+        ded_font: s.dedFont || "bold",
         overrides: overrides.a,
         overrides_b: s.twoSided ? overrides.b : null,
         roll: s.roll,
@@ -297,7 +299,7 @@ export default function Creator() {
     setParts({ a: h.partition, b: h.partition_b || null });
     setOverrides({ a: h.overrides || {}, b: h.overrides_b || {} });
     setActive("a"); setStale(false);
-    set({ title: h.title, titleB: h.title_b || "", twoSided: !!h.two_sided, thickness: h.thickness, duration: h.duration, recordNo: "", pinRadius: h.pin_radius || 0.8, roll: h.roll || "before", dedHeight: h.ded_height || 2.4, dedB: h.ded_b !== false });
+    set({ title: h.title, titleB: h.title_b || "", twoSided: !!h.two_sided, thickness: h.thickness, duration: h.duration, recordNo: "", pinRadius: h.pin_radius || 0.8, roll: h.roll || "before", dedHeight: h.ded_height || 2.4, dedB: h.ded_b !== false, dedFont: h.ded_font || "bold" });
     setTimeout(() => { skipStale.current = false; }, 0);
   };
 

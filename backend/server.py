@@ -23,9 +23,15 @@ import fisher_price as fp
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+mongo_url = os.environ.get('MONGO_URL')
+if os.environ.get('FP_STORAGE') == 'files' or not mongo_url:
+    # offline build: records live in a folder, no MongoDB needed
+    from filedb import FileDB
+    client = FileDB(os.environ.get('DATA_DIR', str(ROOT_DIR / 'data' / 'records')))
+    db = client
+else:
+    client = AsyncIOMotorClient(mongo_url)
+    db = client[os.environ['DB_NAME']]
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -46,6 +52,7 @@ class ConversionSummary(BaseModel):
     pin_radius: Optional[float] = None
     ded_height: Optional[float] = None
     ded_b: Optional[bool] = None
+    ded_font: Optional[str] = None
     toy_fixes: int = 0
     mesh_check: Optional[dict] = None
     roll: Optional[str] = None
@@ -109,6 +116,7 @@ class PressRequest(BaseModel):
     pin_radius: float = Field(0.8, ge=0.4, le=1.0)
     ded_height: float = Field(2.4, ge=2.0, le=3.5)
     ded_b: bool = True
+    ded_font: str = Field("bold", pattern="^(bold|rounded|script)$")
     overrides: Optional[dict] = None
     overrides_b: Optional[dict] = None
     roll: str = Field("before", pattern="^(before|after)$")
@@ -374,6 +382,7 @@ async def _store(doc_id, filename, title, out, meta, title_b=None,
         "pin_radius": stats.get("pin_radius"),
         "ded_height": stats.get("ded_height"),
         "ded_b": stats.get("ded_b"),
+        "ded_font": stats.get("ded_font"),
         "toy_fixes": stats.get("toy_fixes", 0),
         "mesh_check": stats.get("mesh_check"),
         "roll": stats.get("roll", "before"),
@@ -401,7 +410,7 @@ async def press(req: PressRequest):
             max(min_thick, min(8.0, req.thickness)),
             req.partition_b, title_b or "", req.engrave, record_no, comb,
             req.overrides, req.overrides_b, req.pin_radius, req.roll, req.chords or req.voices < 16, req.voices,
-            req.ded_height, req.ded_b,
+            req.ded_height, req.ded_b, req.ded_font,
         )
     except Exception as e:
         logging.exception("press failed")
@@ -476,7 +485,7 @@ async def _build_album(album_id: str, raw: bytes, o: dict):
                 fp.press, a["partition"], title, o["thickness"],
                 b["partition"] if b else None, title_b or "", o["engrave"], record_no, comb,
                 None, None, o["pin_radius"], o["roll"], o.get("chords", False), o.get("voices", 16),
-                o.get("ded_height", fp.DED_H), o.get("ded_b", True))
+                o.get("ded_height", fp.DED_H), o.get("ded_b", True), o.get("ded_font", "bold"))
             meta = {"note_count": a["note_count"] + (b["note_count"] if b else 0),
                     "exact": a.get("exact", 0), "adjusted": a.get("adjusted", 0), "merged": a.get("merged", 0),
                     "offset": offset, "duration": duration}
@@ -563,6 +572,7 @@ async def make_album(
     voices: int = Form(16),
     ded_height: float = Form(2.4),
     ded_b: bool = Form(True),
+    ded_font: str = Form("bold"),
 ):
     """Cut the whole song onto as many discs as it takes (duration 0 = auto-fit the tempo)."""
     raw = await _read_midi(file)
@@ -575,7 +585,7 @@ async def make_album(
         "thickness": max(4.5 if two else 1.5, min(8.0, thickness)), "engrave": bool(engrave),
         "pin_radius": max(0.4, min(1.0, pin_radius)), "roll": "after" if roll == "after" else "before",
         "auto_transpose": bool(auto_transpose), "manual_offset": manual_offset,
-        "ded_height": max(2.0, min(3.5, ded_height)), "ded_b": bool(ded_b),
+        "ded_height": max(2.0, min(3.5, ded_height)), "ded_b": bool(ded_b), "ded_font": ded_font,
     }
     doc = {"id": str(uuid.uuid4()), "title": o["title"], "status": "running",
            "created_at": datetime.now(timezone.utc).isoformat(), "duration": o["duration"] or 0.0,
@@ -644,7 +654,8 @@ ONE-CLICK START (no typing)
   Windows : double-click  start-windows.bat
   macOS   : double-click  start-mac.command
   Linux   : ./start-linux.sh
-  Needs Python 3.10+, Node.js LTS and MongoDB Community installed once — see BUILD-GUIDE.txt.
+  Needs Python 3.10+ and Node.js LTS installed once — see BUILD-GUIDE.txt. MongoDB is optional:
+  without it records are saved as JSON files in data/records (backend/filedb.py).
 
 What is inside
   backend/        FastAPI + Python geometry (fisher_price.py: MIDI -> 86-beat disc -> STL/SCAD/FPR, auto-fit, albums, 8 kHz review audio)
@@ -656,9 +667,10 @@ What is inside
   memory/         product notes (PRD.md)
 
 Run it by hand
-  1. MongoDB running locally (or any MONGO_URL)
+  1. (optional) MongoDB running locally
   2. backend:  cd backend && pip install -r requirements-local.txt
-               create backend/.env with  MONGO_URL=mongodb://localhost:27017  and  DB_NAME=fisher_price
+               create backend/.env with  FP_STORAGE=files  and  DATA_DIR=../data/records
+               (or MONGO_URL=mongodb://localhost:27017 and DB_NAME=fisher_price to use MongoDB)
                uvicorn server:app --host 0.0.0.0 --port 8001
   3. frontend: cd frontend && npm install --legacy-peer-deps
                create frontend/.env with  REACT_APP_BACKEND_URL=http://localhost:8001
@@ -704,7 +716,7 @@ async def source_zip():
 
 
 @api_router.post("/testdisc", response_model=ConversionSummary)
-async def test_disc(thickness: float = Form(3.0), pin_radius: float = Form(0.8), engrave: bool = Form(True), ded_height: float = Form(2.4)):
+async def test_disc(thickness: float = Form(3.0), pin_radius: float = Form(0.8), engrave: bool = Form(True), ded_height: float = Form(2.4), ded_font: str = Form("bold")):
     """Chord test disc: the same phrase as single notes, two-note chords and triads."""
     comb = await _comb()
     partition = fp.chord_test_partition(comb)
@@ -712,7 +724,7 @@ async def test_disc(thickness: float = Form(3.0), pin_radius: float = Form(0.8),
     record_no = await _record_no(title)
     out = await run_in_threadpool(fp.press, partition, title, max(1.5, min(8.0, thickness)), None, "",
                                   bool(engrave), record_no, comb, None, None,
-                                  max(0.4, min(1.0, pin_radius)), "before", True, 3, max(2.0, min(3.5, ded_height)))
+                                  max(0.4, min(1.0, pin_radius)), "before", True, 3, max(2.0, min(3.5, ded_height)), True, ded_font)
     meta = {"note_count": sum(sum(r) for r in partition), "exact": 0, "adjusted": 0, "merged": 0,
             "offset": 0, "duration": 25.0}
     return await _store(str(uuid.uuid4()), "chord-test.mid", title, out, meta, None, partition, None,

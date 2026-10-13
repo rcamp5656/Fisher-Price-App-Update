@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Library, Plus } from "lucide-react";
 import { CARD } from "../lib/fp";
 
@@ -9,6 +9,7 @@ export const albumColour = (h) => ALBUM_COLOURS[((h.album_index || 1) - 1) % ALB
 
 // Every record number from #1 up — factory 1-5, then your pressings; gaps are clickable
 export default function RecordShelf({ history, onGap, onOpen, current }) {
+  const [focus, setFocus] = useState(null);   // album_id to spotlight; others dim
   const byNo = new Map();
   history.forEach((h) => { if (h.record_no != null && !byNo.has(h.record_no)) byNo.set(h.record_no, h); });
   // albums: discs sharing album_id, in play order; the disc after the one that is open is "next"
@@ -35,7 +36,12 @@ export default function RecordShelf({ history, onGap, onOpen, current }) {
         <div data-testid="shelf-albums" className="mb-4 flex flex-col gap-1 font-mono text-[11px]">
           {[...albums.values()].map((list) => (
             <div key={list[0].album_id} data-testid={`shelf-album-${list[0].album_id}`} className="flex flex-wrap items-center gap-1">
-              <span className="font-sans font-black text-xs mr-1">ALBUM · {list[0].title.replace(/\s+\d+\/\d+$/, "")}</span>
+              <button type="button" data-testid={`shelf-album-name-${list[0].album_id}`}
+                onClick={() => setFocus(focus === list[0].album_id ? null : list[0].album_id)}
+                title={focus === list[0].album_id ? "Show every record again" : "Spotlight this album on the shelf"}
+                className={`font-sans font-black text-xs mr-1 px-1.5 py-0.5 rounded border-2 ${focus === list[0].album_id ? "border-[#1D3557] bg-[#1D3557] text-white" : "border-transparent hover:border-[#1D3557] hover:bg-[#E9C46A]"}`}>
+                ALBUM · {list[0].title.replace(/\s+\d+\/\d+$/, "")}{focus === list[0].album_id ? " ✕" : ""}
+              </button>
               {list.map((h, i) => (
                 <React.Fragment key={h.id}>
                   {i > 0 && <span className="text-[#457B9D]">→</span>}
@@ -50,12 +56,18 @@ export default function RecordShelf({ history, onGap, onOpen, current }) {
           ))}
         </div>
       )}
+      {focus && (
+        <p data-testid="shelf-focus-note" className="font-mono text-[11px] text-[#1D3557] -mt-2 mb-2">
+          Spotlight: only this album's discs are lit — tap the album name again to show everything.
+        </p>
+      )}
       <div className="flex flex-wrap gap-2 pt-3">
         {slots.map((n) => {
           const h = byNo.get(n);
+          const dim = focus && !(h && h.album_id === focus) ? "opacity-20 grayscale" : "";
           if (n < FIRST) {
             return (
-              <div key={n} data-testid={`shelf-factory-${n}`} className="h-14 w-14 rounded-full border-2 border-[#1D3557] bg-[#B9A9E3] flex items-center justify-center font-mono font-black text-sm text-[#1D3557]/70" title="Factory record">
+              <div key={n} data-testid={`shelf-factory-${n}`} className={`h-14 w-14 rounded-full border-2 border-[#1D3557] bg-[#B9A9E3] ${dim} flex items-center justify-center font-mono font-black text-sm text-[#1D3557]/70`} title="Factory record">
                 {n}
               </div>
             );
@@ -64,7 +76,7 @@ export default function RecordShelf({ history, onGap, onOpen, current }) {
             const isNext = h.id === nextId;
             const isOpen = current && h.id === current.id;
             return (
-              <div key={n} className="relative flex flex-col items-center gap-0.5">
+              <div key={n} className={`relative flex flex-col items-center gap-0.5 transition-opacity duration-300 ${dim}`}>
                 {isNext && <span data-testid={`shelf-next-${n}`} className="absolute -top-3 font-mono text-[9px] font-black text-[#E63946] whitespace-nowrap">NEXT ▶</span>}
                 <button data-testid={`shelf-record-${n}`} onClick={() => onOpen(h)} title={`${h.title}${h.two_sided ? ` / ${h.title_b}` : ""}${h.album_id ? ` — album disc ${albumTag(h)}` : ""}`}
                   style={h.album_id && !isNext && !isOpen ? { backgroundColor: albumColour(h) } : undefined}
@@ -80,7 +92,7 @@ export default function RecordShelf({ history, onGap, onOpen, current }) {
           }
           return (
             <button key={n} data-testid={`shelf-gap-${n}`} onClick={() => onGap(n)} title={`Press record #${n}`}
-              className="h-14 w-14 rounded-full border-2 border-dashed border-[#457B9D] text-[#457B9D] font-mono text-xs flex flex-col items-center justify-center hover:bg-[#E9C46A] hover:border-[#1D3557] hover:text-[#1D3557]">
+              className={`${dim} h-14 w-14 rounded-full border-2 border-dashed border-[#457B9D] text-[#457B9D] font-mono text-xs flex flex-col items-center justify-center hover:bg-[#E9C46A] hover:border-[#1D3557] hover:text-[#1D3557]`}>
               <Plus className="h-3 w-3" /> {n}
             </button>
           );

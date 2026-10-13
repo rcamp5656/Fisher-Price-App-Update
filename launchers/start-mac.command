@@ -18,19 +18,18 @@ if ! command -v node >/dev/null 2>&1; then
   echo " [!] Node.js not found. Install the LTS version from https://nodejs.org/ (or: brew install node)"; read -r -p "Press Enter to close"; exit 1
 fi
 
-echo " [1/4] MongoDB ..."
+echo " [1/4] Storage ..."
+STORAGE=files
 if pgrep -x mongod >/dev/null 2>&1; then
-  echo "       already running"
+  STORAGE=mongo; echo "       MongoDB already running"
 elif command -v brew >/dev/null 2>&1 && brew list --formula 2>/dev/null | grep -q mongodb-community; then
-  brew services start mongodb-community >/dev/null && echo "       started via Homebrew"
+  brew services start mongodb-community >/dev/null && STORAGE=mongo && echo "       MongoDB started via Homebrew"
 elif command -v mongod >/dev/null 2>&1; then
   mkdir -p data/db
   (mongod --dbpath data/db --port 27017 >data/mongod.log 2>&1 &)
-  echo "       started (data/db)"
+  STORAGE=mongo; echo "       MongoDB started (data/db)"
 else
-  echo "       mongod not found - install MongoDB Community: https://www.mongodb.com/docs/manual/administration/install-community/"
-  echo "       (macOS: brew tap mongodb/brew && brew install mongodb-community)"
-  echo "       Continuing - the app needs MongoDB on mongodb://localhost:27017 to save records."
+  echo "       MongoDB not found - records will be saved as files in data/records (no install needed)."
 fi
 
 echo " [2/4] Backend: Python packages ..."
@@ -39,7 +38,10 @@ echo " [2/4] Backend: Python packages ..."
 source backend/.venv/bin/activate
 python -m pip install --quiet --upgrade pip
 pip install --quiet -r backend/requirements-local.txt
-[ -f backend/.env ] || printf 'MONGO_URL=mongodb://localhost:27017\nDB_NAME=fisher_price\n' > backend/.env
+if [ ! -f backend/.env ]; then
+  if [ "$STORAGE" = mongo ]; then printf 'MONGO_URL=mongodb://localhost:27017\nDB_NAME=fisher_price\n' > backend/.env
+  else printf 'FP_STORAGE=files\nDATA_DIR=../data/records\n' > backend/.env; fi
+fi
 (cd backend && uvicorn server:app --host 0.0.0.0 --port 8001 >../data-backend.log 2>&1 &)
 echo "       backend on http://localhost:8001 (log: data-backend.log)"
 
