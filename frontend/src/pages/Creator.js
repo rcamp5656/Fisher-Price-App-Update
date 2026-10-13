@@ -24,6 +24,7 @@ const emptyAnalysis = () => ({
 const DEFAULTS = {
   title: "", titleB: "", thickness: 3.0, duration: TOY_REV_SECONDS, autoTranspose: true,
   manualOffset: 0, twoSided: false, sideMode: "continue", engrave: true, recordNo: "", nextNo: null,
+  pinRadius: 0.35,
 };
 
 export default function Creator() {
@@ -162,6 +163,7 @@ export default function Creator() {
         adjusted: analysis.a.adjusted + (b?.adjusted || 0),
         merged: analysis.a.merged + (b?.merged || 0),
         record_no: s.recordNo === "" ? null : Number(s.recordNo),
+        pin_radius: s.pinRadius,
         overrides: overrides.a,
         overrides_b: s.twoSided ? overrides.b : null,
       });
@@ -180,7 +182,7 @@ export default function Creator() {
     setParts({ a: h.partition, b: h.partition_b || null });
     setOverrides({ a: h.overrides || {}, b: h.overrides_b || {} });
     setActive("a"); setStale(false);
-    set({ title: h.title, titleB: h.title_b || "", twoSided: !!h.two_sided, thickness: h.thickness, duration: h.duration, recordNo: "" });
+    set({ title: h.title, titleB: h.title_b || "", twoSided: !!h.two_sided, thickness: h.thickness, duration: h.duration, recordNo: "", pinRadius: h.pin_radius || 0.35 });
     setTimeout(() => { skipStale.current = false; }, 0);
   };
 

@@ -15,7 +15,7 @@ const SECTIONS = [
     icon: Compass, title: "Orientation",
     tips: [
       "Print flat, label side up (side A up). No supports needed — grooves are open-topped.",
-      "Two-sided disc: still print flat; the underside grooves are 2 mm bridges and print cleanly on a flat bed.",
+      "Two-sided disc: DON'T print the full body — the underside bumps get first-layer squish. Print HALF A and HALF B pins-up (flat backs), then glue back-to-back; use the spindle + 4 drive holes (toothpicks / a 6 mm rod) to align.",
       "Put the Z-seam on 'rear' or 'aligned' so seam blobs don't land on a pin.",
     ],
   },
@@ -33,7 +33,8 @@ const SECTIONS = [
       "100 % scale, Ø121 mm — do not shrink to fit; the spindle and 4 drive pegs must line up.",
       "3–4 perimeters, 40 %+ infill (or 100 % — the disc is thin anyway).",
       "Turn off elephant's-foot compensation if the disc won't drop onto the spindle, or ream the 6.4 mm hole lightly.",
-      "Two-sided: 5 mm thickness (the app sets this for you) so the top and bottom grooves don't meet.",
+      "Two-sided: 5 mm total (two 2.5 mm halves). Never use supports — nothing on the disc needs them.",
+      "Pin bumps below 0.45 mm radius are thinner than a 0.4 mm line: enable Arachne/variable line width, or use a 0.25 mm nozzle or resin.",
     ],
   },
   {

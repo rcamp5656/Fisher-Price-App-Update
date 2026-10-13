@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Play, Square, RotateCcw, Gauge, AlertTriangle, Repeat } from "lucide-react";
+import { Play, Square, RotateCcw, Gauge, AlertTriangle, Repeat, Shuffle } from "lucide-react";
 import NoteEditor from "./NoteEditor";
 import TrackView from "./TrackView";
 import { useMusicBox } from "../hooks/useMusicBox";
-import { countNotes, speedPct, repeatConflicts, chordConflicts, BTN_LIFT } from "../lib/fp";
+import { countNotes, speedPct, repeatConflicts, chordConflicts, staggerPartition, BTN_LIFT } from "../lib/fp";
 
 function Stat({ label, value, warn, testId }) {
   return (
@@ -87,7 +87,11 @@ export default function EditorWorkspace({
       {chordCount > 0 && (
         <p data-testid="chord-warning" className="font-mono text-[11px] text-[#1D3557] bg-[#FFB703] border-2 border-[#E63946] rounded-md px-2 py-1 flex items-center gap-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#E63946]" />
-          {chordCount} highlighted note(s) share a beat with another note — the player plucks one tine at a time, so nudge one of them a beat over (the originals always stagger them).
+          {chordCount} highlighted note(s) share a beat with another note — the player plucks one tine at a time, so they must be offset (the originals always stagger them).
+          <button type="button" data-testid="auto-stagger-button" onClick={() => side.onChange(staggerPartition(side.partition))}
+            className="ml-auto font-sans font-black text-[11px] px-2 py-0.5 rounded border-2 border-[#1D3557] bg-[#1D3557] text-white flex items-center gap-1 whitespace-nowrap">
+            <Shuffle className="h-3 w-3" /> AUTO-STAGGER
+          </button>
         </p>
       )}
       {clashCount > 0 && (

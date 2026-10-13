@@ -1,28 +1,41 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NOTES, MAX_BEAT, SIDE_GAP, REAL_PITCH_OFFSET, midiToFreq } from "../lib/fp";
 
+// Music-box tine: strong fundamental, decaying inharmonic partials, soft pluck transient
+const PARTIALS = [[1, 1.0, 1.9], [2.0, 0.45, 1.0], [3.01, 0.22, 0.55], [4.16, 0.12, 0.28]];
 function pluck(ctx, dest, freq, when) {
-  const env = ctx.createGain();
-  env.gain.setValueAtTime(0.0001, when);
-  env.gain.exponentialRampToValueAtTime(0.5, when + 0.004);
-  env.gain.exponentialRampToValueAtTime(0.0001, when + 1.8);
-  const fund = ctx.createOscillator();
-  fund.type = "sine";
-  fund.frequency.value = freq;
-  const bright = ctx.createOscillator();
-  bright.type = "sine";
-  bright.frequency.value = freq * 4;
-  const brightEnv = ctx.createGain();
-  brightEnv.gain.setValueAtTime(0.18, when);
-  brightEnv.gain.exponentialRampToValueAtTime(0.0001, when + 0.35);
-  fund.connect(env);
-  bright.connect(brightEnv);
-  brightEnv.connect(env);
-  env.connect(dest);
-  fund.start(when);
-  bright.start(when);
-  fund.stop(when + 1.9);
-  bright.stop(when + 0.5);
+  const out = ctx.createGain();
+  out.gain.value = 0.3;
+  out.connect(dest);
+  const ring = Math.min(1.8, Math.max(0.7, 700 / freq));
+  PARTIALS.forEach(([ratio, g, decay]) => {
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.value = freq * ratio;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, when);
+    env.gain.linearRampToValueAtTime(g, when + 0.003);
+    env.gain.exponentialRampToValueAtTime(0.0001, when + decay * ring);
+    o.connect(env);
+    env.connect(out);
+    o.start(when);
+    o.stop(when + decay * ring + 0.05);
+  });
+  const n = 256;
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  const noise = ctx.createBufferSource();
+  noise.buffer = buf;
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 2500;
+  const ng = ctx.createGain();
+  ng.gain.value = 0.12;
+  noise.connect(hp);
+  hp.connect(ng);
+  ng.connect(out);
+  noise.start(when);
 }
 
 const newCtx = () => new (window.AudioContext || window.webkitAudioContext)();

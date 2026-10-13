@@ -144,8 +144,23 @@ export default function SettingsPanel({ s, set, revSeconds }) {
           className="w-full mt-2 accent-[#457B9D]"
         />
         {s.twoSided && (
-          <p className="font-mono text-[10px] text-[#457B9D] mt-1">Two-sided discs need ≥ 5 mm so the top and bottom grooves don't meet (Fred's spec).</p>
+          <p className="font-mono text-[10px] text-[#457B9D] mt-1">Two-sided discs need ≥ 5 mm so the top and bottom grooves don't meet (Fred's spec). You'll also get two flat-backed halves to print pins-up and glue.</p>
         )}
+      </div>
+
+      <div>
+        <Row icon={Ruler} label="Pin bump radius" value={`${s.pinRadius.toFixed(2)}mm`} testId="pin-radius-value" />
+        <input
+          type="range" min="0.25" max="0.9" step="0.05" value={s.pinRadius}
+          data-testid="pin-radius-slider"
+          onChange={(e) => set({ pinRadius: Number(e.target.value) })}
+          className="w-full mt-2 accent-[#E63946]"
+        />
+        <p className={`font-mono text-[10px] mt-1 ${s.pinRadius < 0.45 ? "text-[#E63946] font-bold" : "text-[#457B9D]"}`} data-testid="pin-radius-hint">
+          {s.pinRadius < 0.45
+            ? `Bump sticks out ${s.pinRadius.toFixed(2)} mm — less than a 0.4 mm nozzle line. Use a 0.25 mm nozzle or resin, or go ≥ 0.45 mm.`
+            : "Bump protrudes into the 2 mm groove by this much; 0.5 mm prints reliably on a 0.4 mm nozzle."}
+        </p>
       </div>
     </div>
   );

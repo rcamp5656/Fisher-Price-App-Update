@@ -59,6 +59,24 @@ export const chordConflicts = (p) => {
   return s;
 };
 
+// move same-beat notes to the nearest free beat (one tine per beat)
+export const staggerPartition = (p) => {
+  const out = clonePartition(p);
+  const used = Array.from({ length: MAX_BEAT }, (_, b) => out.some((row) => row[b]));
+  for (let b = 0; b < MAX_BEAT; b++) {
+    const tones = [];
+    out.forEach((row, t) => { if (row[b]) tones.push(t); });
+    for (let k = 1; k < tones.length; k++) {
+      const t = tones[k];
+      for (const d of [1, -1, 2, -2, 3, -3, 4, -4]) {
+        const nb = b + d;
+        if (nb >= 0 && nb < MAX_BEAT && !used[nb]) { out[t][b] = false; out[t][nb] = true; used[nb] = true; break; }
+      }
+    }
+  }
+  return out;
+};
+
 // pitch rows -> 22 physical tracks (mirrors fisher_price.to_physical, with twin overrides)
 export const toPhysical = (p, overrides = {}) => {
   const beats = p[0].length;

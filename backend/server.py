@@ -29,7 +29,7 @@ app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
 MAX_UPLOAD = 2 * 1024 * 1024
-HIDDEN = {"_id": 0, "stl_b64": 0, "fpr": 0, "fpr_b": 0, "scad": 0}
+HIDDEN = {"_id": 0, "stl_b64": 0, "stl_half_a_b64": 0, "stl_half_b_b64": 0, "fpr": 0, "fpr_b": 0, "scad": 0}
 
 Partition = List[List[bool]]
 
@@ -41,6 +41,7 @@ class ConversionSummary(BaseModel):
     title_b: Optional[str] = None
     two_sided: bool = False
     record_no: Optional[int] = None
+    pin_radius: Optional[float] = None
     created_at: str
     note_count: int
     exact: int
@@ -87,6 +88,7 @@ class PressRequest(BaseModel):
     adjusted: int = 0
     merged: int = 0
     record_no: Optional[int] = Field(None, ge=1, le=999)
+    pin_radius: float = Field(0.35, ge=0.25, le=0.9)
     overrides: Optional[dict] = None
     overrides_b: Optional[dict] = None
 
@@ -227,6 +229,8 @@ async def _store(doc_id, filename, title, out, meta, title_b=None,
         "record_no": record_no,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "stl_b64": base64.b64encode(out["stl"]).decode(),
+        "stl_half_a_b64": base64.b64encode(out["stl_half_a"]).decode() if out.get("stl_half_a") else None,
+        "stl_half_b_b64": base64.b64encode(out["stl_half_b"]).decode() if out.get("stl_half_b") else None,
         "fpr": out["fpr"],
         "fpr_b": out.get("fpr_b"),
         "scad": out["scad"],
@@ -237,9 +241,10 @@ async def _store(doc_id, filename, title, out, meta, title_b=None,
         **meta,
         **{k: stats[k] for k in ("pin_count", "thickness", "beats", "triangles",
                                  "notes_used", "two_sided")},
+        "pin_radius": stats.get("pin_radius"),
     }
     await db.conversions.insert_one(doc)
-    for k in ("stl_b64", "fpr", "fpr_b", "scad", "_id"):
+    for k in ("stl_b64", "stl_half_a_b64", "stl_half_b_b64", "fpr", "fpr_b", "scad", "_id"):
         doc.pop(k, None)
     return doc
 
@@ -259,7 +264,7 @@ async def press(req: PressRequest):
             fp.press, req.partition, req.title.strip(),
             max(min_thick, min(8.0, req.thickness)),
             req.partition_b, title_b or "", req.engrave, record_no, comb,
-            req.overrides, req.overrides_b,
+            req.overrides, req.overrides_b, req.pin_radius,
         )
     except Exception as e:
         logging.exception("press failed")
@@ -337,13 +342,18 @@ async def _file_doc(conversion_id: str, field: str):
     return doc
 
 
+_STL_PARTS = {"full": ("stl_b64", ""), "half-a": ("stl_half_a_b64", "-halfA"),
+              "half-b": ("stl_half_b_b64", "-halfB")}
+
+
 @api_router.get("/conversions/{conversion_id}/stl")
-async def download_stl(conversion_id: str):
-    doc = await _file_doc(conversion_id, "stl_b64")
+async def download_stl(conversion_id: str, part: str = "full"):
+    field, suffix = _STL_PARTS.get(part, _STL_PARTS["full"])
+    doc = await _file_doc(conversion_id, field)
     return Response(
-        content=base64.b64decode(doc["stl_b64"]),
+        content=base64.b64decode(doc[field]),
         media_type="model/stl",
-        headers={"Content-Disposition": f'attachment; filename="{_safe_name(doc)}.stl"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_name(doc)}{suffix}.stl"'},
     )
 
 
@@ -396,7 +406,9 @@ _PACK_README = """Fisher-Price Music Box Record Maker - print pack
 Record #{no}: {title}{b}
 
 Files
-  {name}.stl        print this at 100% scale (diameter 121 mm), flat, label side (side A) up
+  {name}.stl        full disc at 100% scale (diameter 121 mm) - single-sided: print flat, pins up
+  {name}-halfA.stl  (two-sided only) RECOMMENDED: print each half flat, pins up, no supports,
+  {name}-halfB.stl  then glue the flat backs together using the spindle + 4 drive holes to align
   {name}.scad       OpenSCAD source (edit pins / labels by hand if you like)
   {name}.fpr        music-box tune-tracker file for side A{fprb}
   {name}-label.svg  100 x 60 mm label card for the sleeve (open in a browser and print)
@@ -417,6 +429,9 @@ async def download_pack(conversion_id: str):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr(f"{name}.stl", base64.b64decode(doc["stl_b64"]))
+        if doc.get("stl_half_a_b64"):
+            z.writestr(f"{name}-halfA.stl", base64.b64decode(doc["stl_half_a_b64"]))
+            z.writestr(f"{name}-halfB.stl", base64.b64decode(doc["stl_half_b_b64"]))
         z.writestr(f"{name}.scad", doc["scad"])
         z.writestr(f"{name}.fpr", doc["fpr"])
         if doc.get("fpr_b"):

@@ -401,12 +401,12 @@ def _groove_cutters(H: float) -> List:
 
 
 def _pin_meshes(partition: List[List[bool]], H: float, comb: Comb = DEFAULT_COMB,
-                overrides: Dict[str, int] = None) -> List:
+                overrides: Dict[str, int] = None, pin_radius: float = R_PIN) -> List:
     pins = get_pins(to_physical(partition, comb, overrides))
     out = []
     pz = H - (H_GROOVE + OVERLAP) / 2
     for p in pins:
-        cyl = trimesh.creation.cylinder(radius=R_PIN, height=H_GROOVE + OVERLAP, sections=24)
+        cyl = trimesh.creation.cylinder(radius=pin_radius, height=H_GROOVE + OVERLAP, sections=24)
         cyl.apply_translation([p["wall"], 0, pz])
         cyl.apply_transform(trimesh.transformations.rotation_matrix(p["angle"], [0, 0, 1]))
         out.append(cyl)
@@ -416,7 +416,8 @@ def _pin_meshes(partition: List[List[bool]], H: float, comb: Comb = DEFAULT_COMB
 def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
                title: str = "", partition_b: List[List[bool]] = None,
                title_b: str = "", marks: bool = True, record_no: int = 6,
-               comb: Comb = DEFAULT_COMB, overrides: Dict = None, overrides_b: Dict = None):
+               comb: Comb = DEFAULT_COMB, overrides: Dict = None, overrides_b: Dict = None,
+               pin_radius: float = R_PIN, flat_back: bool = False):
     H = float(thickness)
     base = _cyl(R_STOCK, H, H / 2)
     two_sided = partition_b is not None
@@ -431,7 +432,8 @@ def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
         cutters.append(c)
     # recessed label area top & bottom
     cutters.append(_cyl(R_INSET, H_INSET + 0.4, H - H_INSET / 2 + 0.2))
-    cutters.append(_cyl(R_INSET, H_INSET + 0.4, H_INSET / 2 - 0.2))
+    if not flat_back:
+        cutters.append(_cyl(R_INSET, H_INSET + 0.4, H_INSET / 2 - 0.2))
     # note grooves (annular channels cut into the top, and bottom for side B)
     cutters.extend(_groove_cutters(H))
     if two_sided:
@@ -443,11 +445,11 @@ def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
     disc = trimesh.boolean.difference([base, all_cuts], engine="manifold")
 
     # pins (bumps) refill groove segments up to the surface
-    adds = _pin_meshes(partition, H, comb, overrides)
+    adds = _pin_meshes(partition, H, comb, overrides, pin_radius)
     pin_count = len(adds)
     adds.extend(_text_meshes(title, H, record_no if marks else 0))
     if two_sided:
-        side_b = _pin_meshes(partition_b, H, comb, overrides_b)
+        side_b = _pin_meshes(partition_b, H, comb, overrides_b, pin_radius)
         pin_count += len(side_b)
         side_b.extend(_text_meshes(title_b, H, record_no if marks else 0))
         for m in side_b:
@@ -493,7 +495,7 @@ labelB = "{TITLE_B}";
 labelR = 16.3;
 markR = 8.5;
 hText = 0.6;
-rPin = 0.35;
+rPin = {PIN_R};
 
 module createDisc() {{
         union() {{
@@ -592,7 +594,8 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
             partition_b: List[List[bool]] = None, title_b: str = "",
             label_a: str = None, label_b: str = None, marks: bool = True,
             record_no: int = 6, comb: Comb = DEFAULT_COMB,
-            overrides: Dict = None, overrides_b: Dict = None) -> str:
+            overrides: Dict = None, overrides_b: Dict = None,
+            pin_radius: float = R_PIN) -> str:
     label_a = title if label_a is None else label_a
     label_b = title_b if label_b is None else label_b
     lines = _scad_pins(partition, "false", comb, overrides)
@@ -612,6 +615,7 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
     return _SCAD_TEMPLATE.format(
         DATE_TIME=datetime.now().strftime("%d %b %Y %H:%M"),
         THICKNESS=thickness,
+        PIN_R=pin_radius,
         TWO_SIDED="true" if partition_b is not None else "false",
         TITLE_A=_scad_str(title),
         TITLE_B=_scad_str(title_b) if partition_b is not None else "",
@@ -637,30 +641,43 @@ def _finish_analysis(rec: Dict, duration: float, start: float) -> Dict:
     return rec
 
 
+def _stl(mesh) -> bytes:
+    b = mesh.export(file_type="stl")
+    return b.encode() if isinstance(b, str) else bytes(b)
+
+
 def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
           partition_b: List[List[bool]] = None, title_b: str = "",
           engrave: bool = True, record_no: int = 6, comb: Comb = DEFAULT_COMB,
-          overrides: Dict = None, overrides_b: Dict = None) -> Dict:
-    """Partition(s) -> STL / SCAD / FPR files."""
+          overrides: Dict = None, overrides_b: Dict = None,
+          pin_radius: float = R_PIN) -> Dict:
+    """Partition(s) -> STL / SCAD / FPR files. Two-sided discs also get two
+    flat-backed halves to print pins-up and glue back to back (no supports)."""
     label_a = title if engrave else ""
     label_b = title_b if engrave else ""
+    common = dict(marks=engrave, record_no=record_no, comb=comb, pin_radius=pin_radius)
     mesh, pin_count = build_mesh(partition, thickness, label_a, partition_b, label_b,
-                                 marks=engrave, record_no=record_no, comb=comb,
-                                 overrides=overrides, overrides_b=overrides_b)
-    stl_bytes = mesh.export(file_type="stl")
-    if isinstance(stl_bytes, str):
-        stl_bytes = stl_bytes.encode()
+                                 overrides=overrides, overrides_b=overrides_b, **common)
+    stl_bytes = _stl(mesh)
+    halves = {}
+    if partition_b is not None:
+        half = thickness / 2
+        ha, _ = build_mesh(partition, half, label_a, overrides=overrides, flat_back=True, **common)
+        hb, _ = build_mesh(partition_b, half, label_b, overrides=overrides_b, flat_back=True, **common)
+        halves = {"stl_half_a": _stl(ha), "stl_half_b": _stl(hb)}
     used = sorted({comb.notes[t] for part in (partition, partition_b or [])
                    for t, row in enumerate(part) if any(row)})
     return {
-        "stl": bytes(stl_bytes),
+        "stl": stl_bytes,
+        **halves,
         "fpr": to_fpr(partition, title),
         "fpr_b": to_fpr(partition_b, title_b) if partition_b is not None else None,
         "scad": to_scad(partition, thickness, title, partition_b, title_b, label_a, label_b,
                         marks=engrave, record_no=record_no, comb=comb,
-                        overrides=overrides, overrides_b=overrides_b),
+                        overrides=overrides, overrides_b=overrides_b, pin_radius=pin_radius),
         "stats": {
             "pin_count": pin_count,
+            "pin_radius": pin_radius,
             "thickness": thickness,
             "beats": MAX_BEAT,
             "triangles": int(len(mesh.faces)),
