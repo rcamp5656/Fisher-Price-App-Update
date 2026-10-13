@@ -60,6 +60,9 @@ export default function Shared() {
             </section>
             <aside className="col-span-12 lg:col-span-4 flex flex-col gap-6">
               <div className={`${CARD} p-5`}>
+                {record.record_no != null && (
+                  <p className="font-mono text-xs font-bold text-[#E63946] mb-1">RECORD #{record.record_no}</p>
+                )}
                 <p className="font-mono text-[10px] uppercase text-[#457B9D]">Side A</p>
                 <h2 data-testid="share-title" className="font-sans font-black text-2xl tracking-tight break-words">{record.title}</h2>
                 {record.two_sided && (

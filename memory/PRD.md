@@ -76,6 +76,14 @@ on an original Fisher-Price music box record player.
   dash mark right of the spindle; all inside the recess. SCAD has `mark()`/`dash()` modules.
 - 3D preview recoloured to Fisher-Price lavender (#B9A9E3). Backend 23/23 tests pass.
 
+### 2026-10-13 (session 2, batch 4 — pins & numbering)
+- **Note pins** are now semicircular bumps (R_PIN 0.7 mm half-cylinders centred on the groove
+  wall, full groove depth) instead of 1 mm blocks — opposite-wall bumps never bridge the groove,
+  matching the user's photos of the originals. SCAD `pin(wall, angle, side)` uses a cylinder.
+- **Record numbering**: label numeral = record number. Starts at **#6** (factory set is 1–5),
+  increments per new pressing; re-pressing the same title (case-insensitive) reuses its number.
+  Stored as `record_no`; shown in spec sheet, history and share page. Both sides carry the number.
+
 ## Backlog / Remaining
 - P1: User validation of physical prints (pin height/width on the real toy).
 - P1: User to verify twin tines 8/9 sound the same pitch on their player (confirms comb mapping).

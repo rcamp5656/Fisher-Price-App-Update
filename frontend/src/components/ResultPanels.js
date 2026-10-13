@@ -59,6 +59,7 @@ function NoteBadge({ name }) {
 
 export function SpecSheet({ result }) {
   const cells = [
+    ["Record #", result.record_no ?? "—"],
     ["Pins placed", result.pin_count],
     ["On-pitch", result.exact],
     ["Snapped", result.adjusted],
@@ -74,7 +75,11 @@ export function SpecSheet({ result }) {
     <div data-testid="result-panel" className="col-span-12 grid grid-cols-1 md:grid-cols-12 gap-6">
       <div className={`${CARD} p-6 md:col-span-7`}>
         <h3 className="font-sans font-black text-xl tracking-tight flex items-center gap-2 mb-4">
-          <CheckCircle2 className="h-5 w-5 text-[#2A9D8F]" /> SPEC SHEET — {result.title}
+          <CheckCircle2 className="h-5 w-5 text-[#2A9D8F]" />
+          {result.record_no != null && (
+            <span data-testid="record-number" className="font-mono text-sm bg-[#1D3557] text-white rounded px-2 py-0.5">#{result.record_no}</span>
+          )}
+          SPEC SHEET — {result.title}
           {result.two_sided && <span className="font-mono text-sm text-[#457B9D]">/ {result.title_b}</span>}
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 font-mono text-sm">
@@ -114,7 +119,10 @@ export function HistoryPanel({ api, history, onPreview }) {
         {history.map((h) => (
           <div key={h.id} data-testid={`history-item-${h.id}`} className="border-2 border-[#1D3557] rounded-lg p-3 bg-[#F4F1EA] flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="font-mono font-bold truncate">{h.title}{h.two_sided ? ` / ${h.title_b}` : ""}</div>
+              <div className="font-mono font-bold truncate">
+                {h.record_no != null && <span className="text-[#457B9D]">#{h.record_no} </span>}
+                {h.title}{h.two_sided ? ` / ${h.title_b}` : ""}
+              </div>
               <div className="font-mono text-[11px] text-[#457B9D]">
                 {h.pin_count} pins · {h.thickness}mm{h.two_sided ? " · 2-sided" : ""}
               </div>

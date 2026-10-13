@@ -7,6 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import base64
 import logging
+import re
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -37,6 +38,7 @@ class ConversionSummary(BaseModel):
     title: str
     title_b: Optional[str] = None
     two_sided: bool = False
+    record_no: Optional[int] = None
     created_at: str
     note_count: int
     exact: int
@@ -88,6 +90,21 @@ def _check_partition(p: Optional[Partition], name: str):
         raise HTTPException(400, f"{name} must be {fp.TONES_COUNT} x {fp.MAX_BEAT}")
 
 
+FIRST_RECORD_NO = 6
+
+
+async def _record_no(title: str) -> int:
+    """Reuse the number of an earlier pressing with the same title, else next free."""
+    same = await db.conversions.find_one(
+        {"title": {"$regex": f"^{re.escape(title)}$", "$options": "i"}, "record_no": {"$ne": None}},
+        {"_id": 0, "record_no": 1}, sort=[("created_at", -1)])
+    if same:
+        return same["record_no"]
+    top = await db.conversions.find_one({"record_no": {"$ne": None}}, {"_id": 0, "record_no": 1},
+                                        sort=[("record_no", -1)])
+    return (top["record_no"] + 1) if top else FIRST_RECORD_NO
+
+
 async def _read_midi(file: UploadFile) -> bytes:
     if not file.filename.lower().endswith((".mid", ".midi")):
         raise HTTPException(status_code=400, detail="Please upload a .mid or .midi file")
@@ -131,13 +148,14 @@ async def analyze(
 
 
 async def _store(doc_id, filename, title, out, meta, title_b=None,
-                 partition=None, partition_b=None):
+                 partition=None, partition_b=None, record_no=None):
     stats = out["stats"]
     doc = {
         "id": doc_id,
         "filename": filename,
         "title": title,
         "title_b": title_b,
+        "record_no": record_no,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "stl_b64": base64.b64encode(out["stl"]).decode(),
         "fpr": out["fpr"],
@@ -163,11 +181,12 @@ async def press(req: PressRequest):
         raise HTTPException(400, "Side A has no notes")
     title_b = (req.title_b or "Side B")[:40] if req.partition_b is not None else None
     min_thick = 4.5 if req.partition_b is not None else 1.5
+    record_no = await _record_no(req.title.strip())
     try:
         out = await run_in_threadpool(
             fp.press, req.partition, req.title.strip(),
             max(min_thick, min(8.0, req.thickness)),
-            req.partition_b, title_b or "", req.engrave,
+            req.partition_b, title_b or "", req.engrave, record_no,
         )
     except Exception as e:
         logging.exception("press failed")
@@ -179,7 +198,7 @@ async def press(req: PressRequest):
         "offset": req.offset, "duration": req.duration,
     }
     return await _store(str(uuid.uuid4()), req.filename, req.title.strip(), out, meta,
-                        title_b, req.partition, req.partition_b)
+                        title_b, req.partition, req.partition_b, record_no)
 
 
 @api_router.post("/convert", response_model=ConversionSummary)
@@ -193,6 +212,7 @@ async def convert(
 ):
     raw = await _read_midi(file)
     disc_title = (title or Path(file.filename).stem)[:40]
+    record_no = await _record_no(disc_title)
     try:
         out = await run_in_threadpool(
             fp.generate_stl, raw,
@@ -201,6 +221,7 @@ async def convert(
             auto_transpose=auto_transpose,
             manual_offset=manual_offset,
             title=disc_title,
+            record_no=record_no,
         )
     except Exception as e:
         logging.exception("conversion failed")
@@ -215,7 +236,7 @@ async def convert(
     meta = {k: stats[k] for k in ("note_count", "exact", "adjusted", "merged",
                                   "offset", "duration")}
     return await _store(str(uuid.uuid4()), file.filename, disc_title, out, meta,
-                        partition=out["partition"])
+                        partition=out["partition"], record_no=record_no)
 
 
 @api_router.get("/conversions", response_model=List[ConversionSummary])

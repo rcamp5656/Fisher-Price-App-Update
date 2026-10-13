@@ -27,6 +27,7 @@ H_GROOVE = 1.2        # depth of the note grooves
 OVERLAP = 0.2         # modelling overlap to keep booleans manifold
 R_CENTER = 3.22       # centre spindle hole radius
 HEAD_OFFSET = 2.0     # angular lead of the playback head
+R_PIN = 0.7           # radius of the semicircular note bumps on the groove walls
 
 # Groove inner radii (11 grooves, each holds two note tracks)
 GROOVE_INNERS = [28.15, 30.89, 33.71, 36.425, 39.225, 42,
@@ -176,17 +177,19 @@ def to_physical(partition: List[List[bool]]) -> List[List[bool]]:
 
 
 def get_pins(part22: List[List[bool]]) -> List[Dict]:
+    """Semicircular bumps on the groove walls (like the factory records).
+    Even tracks ride the inner wall of a groove, odd tracks the outer wall;
+    the bump is centred on the wall so it never bridges the 2 mm groove."""
     pins = []
     beats = len(part22[0])
     note_angle = 2 * math.pi / beats
     for track in range(TRACKS_COUNT):
-        inner = TRACK_RADIUS[track] - 0.5 - (OVERLAP if track % 2 == 0 else 0)
-        outer = inner + 1 + OVERLAP
         radius = TRACK_RADIUS[track]
+        wall = radius - 0.5 if track % 2 == 0 else radius + 0.5
         for beat in range(beats):
             if part22[track][beat]:
                 angle = note_angle * beat - HEAD_OFFSET / radius
-                pins.append({"inner": inner, "outer": outer, "angle": angle})
+                pins.append({"wall": wall, "angle": angle})
     return pins
 
 
@@ -285,7 +288,7 @@ def _place(shape, angle_deg: float, radius: float):
 
 
 def _side_marks(side_no: int):
-    """Factory-style marks: side numeral left of the spindle, dash to the right."""
+    """Factory-style marks: record number left of the spindle, dash to the right."""
     from shapely import affinity
     from shapely.geometry import box
     marks = []
@@ -315,15 +318,15 @@ def _extrude_label(shapes, H: float) -> List:
     return meshes
 
 
-def _text_meshes(title: str, H: float, side_no: int = 0) -> List:
+def _text_meshes(title: str, H: float, number: int = 0) -> List:
     title = (title or "").strip()
     shapes = []
     if title:
         shape = _text_shape(title)
         if shape is not None:
             shapes.append(_bend(shape))
-    if side_no:
-        shapes.extend(_side_marks(side_no))
+    if number:
+        shapes.extend(_side_marks(number))
     return _extrude_label(shapes, H)
 
 
@@ -358,18 +361,16 @@ def _pin_meshes(partition: List[List[bool]], H: float) -> List:
     out = []
     pz = H - (H_GROOVE + OVERLAP) / 2
     for p in pins:
-        box = trimesh.creation.box(extents=[p["outer"] - p["inner"], 1.0,
-                                            H_GROOVE + OVERLAP])
-        box.apply_translation([p["inner"] + (p["outer"] - p["inner"]) / 2, 0, pz])
-        box.apply_transform(trimesh.transformations.rotation_matrix(
-            p["angle"], [0, 0, 1]))
-        out.append(box)
+        cyl = trimesh.creation.cylinder(radius=R_PIN, height=H_GROOVE + OVERLAP, sections=24)
+        cyl.apply_translation([p["wall"], 0, pz])
+        cyl.apply_transform(trimesh.transformations.rotation_matrix(p["angle"], [0, 0, 1]))
+        out.append(cyl)
     return out
 
 
 def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
                title: str = "", partition_b: List[List[bool]] = None,
-               title_b: str = "", marks: bool = True):
+               title_b: str = "", marks: bool = True, record_no: int = 6):
     H = float(thickness)
     base = _cyl(R_STOCK, H, H / 2)
     two_sided = partition_b is not None
@@ -398,11 +399,11 @@ def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
     # pins (bumps) refill groove segments up to the surface
     adds = _pin_meshes(partition, H)
     pin_count = len(adds)
-    adds.extend(_text_meshes(title, H, 1 if marks else 0))
+    adds.extend(_text_meshes(title, H, record_no if marks else 0))
     if two_sided:
         side_b = _pin_meshes(partition_b, H)
         pin_count += len(side_b)
-        side_b.extend(_text_meshes(title_b, H, 2 if marks else 0))
+        side_b.extend(_text_meshes(title_b, H, record_no if marks else 0))
         for m in side_b:
             m.apply_transform(flip)
         adds.extend(side_b)
@@ -448,6 +449,7 @@ labelB = "{TITLE_B}";
 labelR = 16.3;
 markR = 8.5;
 hText = 0.6;
+rPin = 0.7;
 
 module createDisc() {{
         union() {{
@@ -517,10 +519,11 @@ module dash(onSecondSide) {{
         }}
 }}
 
-module pin(inner, outer, angle, onSecondSide) {{
+// Semicircular note bump centred on a groove wall (half sits in the wall, half plucks the tine)
+module pin(wall, angle, onSecondSide) {{
         onSide(onSecondSide) rotate(a=angle) {{
-                translate(v=[inner, -0.5, hStock-hGroove-overlap]) {{
-                        cube(size=[outer-inner, 1, hGroove+overlap], center=false);
+                translate(v=[wall, 0, hStock-hGroove-overlap]) {{
+                        cylinder(h=hGroove+overlap, r=rPin, $fn=24);
                 }}
         }}
 }}
@@ -533,8 +536,7 @@ def _scad_pins(partition, side_flag):
     lines = []
     for p in get_pins(to_physical(partition)):
         deg = math.degrees(p["angle"])
-        lines.append(f"\t\tpin({round(p['inner'], 3)},{round(p['outer'], 3)},"
-                     f"{round(deg, 3)},{side_flag});")
+        lines.append(f"\t\tpin({round(p['wall'], 3)},{round(deg, 3)},{side_flag});")
     return lines
 
 
@@ -544,7 +546,8 @@ def _scad_str(s: str) -> str:
 
 def to_scad(partition: List[List[bool]], thickness: float, title: str,
             partition_b: List[List[bool]] = None, title_b: str = "",
-            label_a: str = None, label_b: str = None, marks: bool = True) -> str:
+            label_a: str = None, label_b: str = None, marks: bool = True,
+            record_no: int = 6) -> str:
     label_a = title if label_a is None else label_a
     label_b = title_b if label_b is None else label_b
     lines = _scad_pins(partition, "false")
@@ -554,12 +557,12 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
     labels = [f'\t\tglyph("{_scad_str(ch)}",{ang},{size},false);'
               for ch, ang, size in label_glyphs(label_a)]
     if marks:
-        labels += ['\t\tmark("1",180,markR,3.2,false);', '\t\tdash(false);']
+        labels += [f'\t\tmark("{record_no}",180,markR,3.2,false);', '\t\tdash(false);']
     if partition_b is not None:
         labels += [f'\t\tglyph("{_scad_str(ch)}",{ang},{size},true);'
                    for ch, ang, size in label_glyphs(label_b)]
         if marks:
-            labels += ['\t\tmark("2",180,markR,3.2,true);', '\t\tdash(true);']
+            labels += [f'\t\tmark("{record_no}",180,markR,3.2,true);', '\t\tdash(true);']
     from datetime import datetime
     return _SCAD_TEMPLATE.format(
         DATE_TIME=datetime.now().strftime("%d %b %Y %H:%M"),
@@ -586,12 +589,12 @@ def analyze(midi_bytes: bytes, duration: float = 25.0, start: float = 0.0,
 
 def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
           partition_b: List[List[bool]] = None, title_b: str = "",
-          engrave: bool = True) -> Dict:
+          engrave: bool = True, record_no: int = 6) -> Dict:
     """Partition(s) -> STL / SCAD / FPR files."""
     label_a = title if engrave else ""
     label_b = title_b if engrave else ""
     mesh, pin_count = build_mesh(partition, thickness, label_a, partition_b, label_b,
-                                 marks=engrave)
+                                 marks=engrave, record_no=record_no)
     stl_bytes = mesh.export(file_type="stl")
     if isinstance(stl_bytes, str):
         stl_bytes = stl_bytes.encode()
@@ -602,7 +605,7 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
         "fpr": to_fpr(partition, title),
         "fpr_b": to_fpr(partition_b, title_b) if partition_b is not None else None,
         "scad": to_scad(partition, thickness, title, partition_b, title_b, label_a, label_b,
-                        marks=engrave),
+                        marks=engrave, record_no=record_no),
         "stats": {
             "pin_count": pin_count,
             "thickness": thickness,
@@ -616,9 +619,10 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
 
 def generate_stl(midi_bytes: bytes, duration: float = 25.0,
                  thickness: float = 3.0, auto_transpose: bool = True,
-                 manual_offset: int = 0, title: str = "Record") -> Dict:
+                 manual_offset: int = 0, title: str = "Record",
+                 record_no: int = 6) -> Dict:
     rec = analyze(midi_bytes, duration, 0.0, auto_transpose, manual_offset)
-    out = press(rec["partition"], title, thickness)
+    out = press(rec["partition"], title, thickness, record_no=record_no)
     out["stats"].update({
         "note_count": rec["note_count"],
         "exact": rec["exact"],
