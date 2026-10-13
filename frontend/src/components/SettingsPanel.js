@@ -32,7 +32,7 @@ function Row({ icon: Icon, label, value, testId }) {
   );
 }
 
-export default function SettingsPanel({ s, set, revSeconds }) {
+export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart }) {
   const pct = speedPct(s.duration, revSeconds);
   return (
     <div className="flex flex-col gap-4">
@@ -53,6 +53,15 @@ export default function SettingsPanel({ s, set, revSeconds }) {
           data-testid="record-no-input" type="number" min="1" max="999" className={`${INPUT} mt-1`} value={s.recordNo}
           placeholder={`auto (#${s.nextNo ?? "…"})`} onChange={(e) => set({ recordNo: e.target.value })}
         />
+        <label className="font-mono text-[10px] text-[#457B9D] flex items-center justify-between gap-2 mt-1">
+          <span>Auto numbering starts at</span>
+          <input
+            data-testid="numbering-start-input" type="number" min="1" max="999" defaultValue={numStart} key={numStart}
+            onBlur={(e) => Number(e.target.value) !== numStart && onNumStart(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            className={`${INPUT} w-20 py-0.5 text-xs`}
+          />
+        </label>
       </div>
 
       <div className="flex items-center justify-between">
@@ -149,7 +158,7 @@ export default function SettingsPanel({ s, set, revSeconds }) {
       </div>
 
       <div>
-        <Row icon={Ruler} label="Pin cam depth" value={`${s.pinRadius.toFixed(2)}mm`} testId="pin-radius-value" />
+        <Row icon={Ruler} label="Pin height (triangle)" value={`${s.pinRadius.toFixed(2)}mm`} testId="pin-radius-value" />
         <input
           type="range" min="0.4" max="1.0" step="0.05" value={s.pinRadius}
           data-testid="pin-radius-slider"
@@ -158,8 +167,8 @@ export default function SettingsPanel({ s, set, revSeconds }) {
         />
         <p className={`font-mono text-[10px] mt-1 ${s.pinRadius < 0.6 ? "text-[#E63946] font-bold" : "text-[#457B9D]"}`} data-testid="pin-radius-hint">
           {s.pinRadius < 0.6
-            ? "Shallow cam — the tine may not be pushed far enough to ring. Originals push ~0.7–1.0 mm."
-            : "Ramped cam (2.4 mm long) pushes the tine sideways by this much into the 2 mm groove, then releases it at the beat. Originals ≈ 0.7–1.0 mm."}
+            ? "Shallow pin — the tine may not be pushed far enough to ring. Originals ≈ 0.8 mm."
+            : `Small equilateral triangle on the groove wall (${(s.pinRadius / 0.866).toFixed(2)} mm sides), apex pushing the tine sideways by this much. Originals ≈ 0.8 mm.`}
         </p>
       </div>
     </div>

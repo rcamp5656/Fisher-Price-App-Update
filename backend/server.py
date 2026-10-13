@@ -149,8 +149,29 @@ async def next_record_no(title: str = ""):
 FIRST_RECORD_NO = 6
 
 
+async def _numbering_start() -> int:
+    doc = await db.settings.find_one({"_id": "numbering"})
+    return int(doc["start"]) if doc else FIRST_RECORD_NO
+
+
+class NumberingRequest(BaseModel):
+    start: int = Field(..., ge=1, le=999)
+
+
+@api_router.get("/numbering")
+async def get_numbering():
+    return {"start": await _numbering_start()}
+
+
+@api_router.put("/numbering")
+async def put_numbering(req: NumberingRequest):
+    await db.settings.update_one({"_id": "numbering"}, {"$set": {"start": req.start}}, upsert=True)
+    return {"start": req.start}
+
+
 async def _record_no(title: str) -> int:
-    """Reuse the number of an earlier pressing with the same title, else next free."""
+    """Reuse the number of an earlier pressing with the same title, else the
+    next free number at or above the user's numbering start."""
     same = None
     if title:
         same = await db.conversions.find_one(
@@ -158,9 +179,10 @@ async def _record_no(title: str) -> int:
             {"_id": 0, "record_no": 1}, sort=[("created_at", -1)])
     if same:
         return same["record_no"]
+    start = await _numbering_start()
     top = await db.conversions.find_one({"record_no": {"$ne": None}}, {"_id": 0, "record_no": 1},
                                         sort=[("record_no", -1)])
-    return (top["record_no"] + 1) if top else FIRST_RECORD_NO
+    return max(start, top["record_no"] + 1) if top else start
 
 
 async def _read_midi(file: UploadFile) -> bytes:

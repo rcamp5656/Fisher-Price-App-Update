@@ -82,7 +82,7 @@ export default function EditorWorkspace({
       {a.dropped > 0 && (
         <p data-testid="dropped-notice" className="font-mono text-[11px] text-[#1D3557] bg-white border-2 border-[#1D3557] rounded-md px-2 py-1 flex items-center gap-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          {a.dropped} MIDI note(s) were dropped to fit the toy (cams in one groove need ≥ 2 beats of spacing). The MIDI capture is kept —
+          {a.dropped} MIDI note(s) were dropped to fit the toy (a single tine can't strike on consecutive beats and there was no free beat to slide to). The MIDI capture is kept —
           {a.partition_midi && (
             <button type="button" data-testid="load-midi-raw-button" onClick={() => side.onChange(a.partition_midi)}
               className="font-sans font-black text-[11px] px-2 py-0.5 rounded border-2 border-[#1D3557] bg-[#E9C46A] flex items-center gap-1 whitespace-nowrap">
@@ -110,7 +110,7 @@ export default function EditorWorkspace({
       {clashCount > 0 && (
         <p data-testid="repeat-warning" className="font-mono text-[11px] text-[#1D3557] bg-[#FFB703] border-2 border-[#E63946] rounded-md px-2 py-1 flex items-center gap-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#E63946]" />
-          {clashCount} highlighted note(s) are too close in the same groove — cams need ≥ 2 beats between them (a 2.4 mm cam is longer than one beat at the inner tracks) or they overlap and jam the tines.
+          {clashCount} highlighted note(s) ask a single tine to strike on back-to-back beats — it is still pushed aside by the first pin, so the second can't sound. Twin tines (×2 rows) may repeat.
           <button type="button" data-testid="make-playable-button" onClick={() => side.onChange(makePlayable(side.partition))}
             className="ml-auto font-sans font-black text-[11px] px-2 py-0.5 rounded border-2 border-[#1D3557] bg-[#1D3557] text-white flex items-center gap-1 whitespace-nowrap">
             <Shuffle className="h-3 w-3" /> MAKE PLAYABLE

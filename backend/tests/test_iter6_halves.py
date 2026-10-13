@@ -56,7 +56,7 @@ def single_sided_rec():
         "title": "TEST_Halves1S",
         "partition": ana["partition"],
         "thickness": 3.0,
-        "pin_radius": 0.9,
+        "pin_radius": 0.8,
         "filename": "sample_twinkle.mid",
         "duration": 25.0,
         "offset": ana["offset"],
@@ -138,7 +138,7 @@ def test_pin_radius_persisted(two_sided_rec):
 def test_pin_radius_default_in_single(single_sided_rec):
     r = requests.get(f"{API}/conversions/{single_sided_rec['id']}", timeout=10)
     assert r.status_code == 200
-    assert r.json().get("pin_radius") == 0.9
+    assert r.json().get("pin_radius") == 0.8
 
 
 def test_pin_radius_too_small_rejected():

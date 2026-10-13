@@ -34,7 +34,7 @@ const SECTIONS = [
       "3–4 perimeters, 40 %+ infill (or 100 % — the disc is thin anyway).",
       "Turn off elephant's-foot compensation if the disc won't drop onto the spindle, or ream the 6.4 mm hole lightly.",
       "Two-sided: 5 mm total (two 2.5 mm halves). Never use supports — nothing on the disc needs them.",
-      "Pins are 2.4 mm ramped cams with a 0.9 mm throw — a 0.4 mm nozzle handles them; enable Arachne/variable line width for the thin end of the ramp.",
+      "Pins are ~0.9 mm equilateral triangles — enable Arachne/variable line width so the apex isn't dropped; a 0.25 mm nozzle or resin gives the sharpest tips.",
     ],
   },
   {

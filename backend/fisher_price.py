@@ -28,9 +28,7 @@ H_GROOVE = 1.2        # depth of the note grooves
 OVERLAP = 0.2         # modelling overlap to keep booleans manifold
 R_CENTER = 3.22       # centre spindle hole radius
 HEAD_OFFSET = 2.0     # angular lead of the playback head
-R_PIN = 0.9           # cam protrusion into the groove (how far the tine is pushed sideways)
-PIN_LEN = 2.4         # cam length along the groove (lead-in ramp + flat)
-PIN_FLAT = 0.3        # flat top before the release face
+R_PIN = 0.8           # pin height: apex protrusion into the groove (equilateral triangle, side = h / 0.866)
 
 # Groove inner radii (11 grooves, each holds two note tracks)
 GROOVE_INNERS = [28.15, 30.89, 33.71, 36.425, 39.225, 42,
@@ -202,57 +200,36 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
 # ---------------------------------------------------------------------------
 # 16 tones -> 22 physical tracks (doubled tracks let fast repeats reset)
 # ---------------------------------------------------------------------------
-MIN_GROOVE_GAP = 2    # beats between any two cams in the same groove (cam 2.4 mm > 1 beat at inner radii)
-
-
 def make_playable(partition: List[List[bool]], comb: Comb = DEFAULT_COMB) -> int:
-    """Enforce the toy's mechanics in place. Each groove holds two tines (its
-    two walls); cams in one groove must be >= MIN_GROOVE_GAP beats apart or
-    they overlap and jam the tines. Crowded notes slide later into a free beat
-    when possible, otherwise they are dropped. Returns notes dropped."""
+    """Enforce the toy's mechanics in place: one note per beat across the disc
+    (done by stagger) and a single tine cannot strike on two consecutive beats
+    (it is still deflected). The second strike slides one beat later if that
+    beat is free, otherwise it is dropped. Twin tines alternate, so they may
+    repeat beat to beat. Returns notes dropped."""
     dropped = 0
     beats = len(partition[0])
-    grooves: Dict[int, List[int]] = {}
-    for tone, tracks in enumerate(comb.tines):
-        for t in tracks:
-            grooves.setdefault(t // 2, []).append(tone)
-    for _ in range(6):
-        changed = False
-        d, changed = _playable_pass(partition, grooves, beats)
-        dropped += d
-        if not changed:
-            break
-    return dropped
-
-
-def _playable_pass(partition, grooves, beats):
-    dropped = 0
-    changed = False
     col_used = [any(row[b] for row in partition) for b in range(beats)]
-    for tones in grooves.values():
-        tones = sorted(set(tones))
-        notes = sorted((b, t) for t in tones for b in range(beats) if partition[t][b])
-        last = -MIN_GROOVE_GAP
-        for idx, (b, t) in enumerate(notes):
-            if b - last >= MIN_GROOVE_GAP:
-                last = b
-                continue
-            nxt = notes[idx + 1][0] if idx + 1 < len(notes) else beats + MIN_GROOVE_GAP
-            nb = last + MIN_GROOVE_GAP
-            partition[t][b] = False
-            col_used[b] = any(r[b] for r in partition)
-            changed = True
-            if nb < beats and not col_used[nb] and nxt - nb >= MIN_GROOVE_GAP:
-                partition[t][nb] = True
-                col_used[nb] = True
-                last = nb
-            else:
+    for tone, tracks in enumerate(comb.tines):
+        if len(tracks) > 1:
+            continue
+        row = partition[tone]
+        b = 1
+        while b < beats:
+            if row[b] and row[b - 1]:
+                nb = b + 1
+                row[b] = False
+                col_used[b] = any(r[b] for r in partition)
+                if nb < beats and not col_used[nb] and not (nb + 1 < beats and row[nb + 1]):
+                    row[nb] = True
+                    col_used[nb] = True
+                    b = nb + 1
+                    continue
                 dropped += 1
-        if notes and notes[0][0] + beats - last < MIN_GROOVE_GAP and partition[notes[0][1]][notes[0][0]]:
-            partition[notes[0][1]][notes[0][0]] = False
+            b += 1
+        if row[0] and row[beats - 1]:
+            row[0] = False
             dropped += 1
-            changed = True
-    return dropped, changed
+    return dropped
 
 
 def to_physical(partition: List[List[bool]], comb: Comb = DEFAULT_COMB,
@@ -462,12 +439,13 @@ def _groove_cutters(H: float) -> List:
 
 
 def _cam_polygon(direction: int, depth: float):
-    """Plan-view cam: ramp rises along the groove to `depth`, then a sharp
-    release face at the beat angle (y=0). Leading edge is at the smaller angle."""
+    """Plan-view pin: small equilateral triangle sitting on the groove wall,
+    apex pointing into the groove at the beat angle (base centred on y=0)."""
     from shapely.geometry import Polygon
     d = direction
-    return Polygon([(-d * OVERLAP, -PIN_LEN), (-d * OVERLAP, 0.0), (d * depth, 0.0),
-                    (d * depth, -PIN_FLAT), (0.0, -PIN_LEN)])
+    half = depth / math.sqrt(3)
+    return Polygon([(-d * OVERLAP, -half), (-d * OVERLAP, half), (0.0, half),
+                    (d * depth, 0.0), (0.0, -half)])
 
 
 def _pin_meshes(partition: List[List[bool]], H: float, comb: Comb = DEFAULT_COMB,
@@ -568,8 +546,6 @@ labelR = 16.3;
 markR = 8.5;
 hText = 0.6;
 pinDepth = {PIN_R};
-pinLen = 2.4;
-pinFlat = 0.3;
 
 module createDisc() {{
         union() {{
@@ -639,13 +615,13 @@ module dash(onSecondSide) {{
         }}
 }}
 
-// Note cam on a groove wall: ramp pushes the tine sideways, sharp face at the beat releases it
+// Note pin: small equilateral triangle on a groove wall, apex into the groove at the beat
 // dir = 1 -> on the inner wall pointing outward, -1 -> on the outer wall pointing inward
 module pin(wall, angle, dir, onSecondSide) {{
+        half = pinDepth / sqrt(3);
         onSide(onSecondSide) rotate(a=angle) translate(v=[wall, 0, hStock-hGroove-overlap]) {{
                 linear_extrude(height=hGroove+overlap) {{
-                        polygon(points=[[-dir*overlap, -pinLen], [-dir*overlap, 0], [dir*pinDepth, 0],
-                                        [dir*pinDepth, -pinFlat], [0, -pinLen]]);
+                        polygon(points=[[-dir*overlap, -half], [-dir*overlap, half], [0, half], [dir*pinDepth, 0], [0, -half]]);
                 }}
         }}
 }}

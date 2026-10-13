@@ -77,64 +77,24 @@ export const staggerPartition = (p) => {
   return out;
 };
 
-// cams in one groove (two walls = two tines) must be >= 2 beats apart or they overlap:
-// slide crowded notes later into a free beat when possible, otherwise drop them
-export const MIN_GROOVE_GAP = 2;
+// a single tine can't strike on consecutive beats: slide the second strike a beat later if free, else drop it
 export const thinRepeats = (p) => {
-  let out = clonePartition(p);
-  for (let i = 0; i < 6; i++) {
-    const next = thinPass(out);
-    if (next === null) break;
-    out = next;
-  }
-  return out;
-};
-// one pass; returns null when nothing had to move
-const thinPass = (p) => {
-  let changed = false;
   const out = clonePartition(p);
   const used = Array.from({ length: MAX_BEAT }, (_, b) => out.some((row) => row[b]));
-  const grooves = new Map();
-  TINES.forEach((tracks, tone) => tracks.forEach((t) => {
-    const g = Math.floor((t - 1) / 2);
-    grooves.set(g, [...(grooves.get(g) || []), tone]);
-  }));
-  grooves.forEach((tonesRaw) => {
-    const tones = [...new Set(tonesRaw)];
-    const notes = [];
-    for (let b = 0; b < MAX_BEAT; b++) tones.forEach((t) => { if (out[t][b]) notes.push([b, t]); });
-    let last = -MIN_GROOVE_GAP;
-    notes.forEach(([b, t], idx) => {
-      if (b - last >= MIN_GROOVE_GAP) { last = b; return; }
-      const nxt = idx + 1 < notes.length ? notes[idx + 1][0] : MAX_BEAT + MIN_GROOVE_GAP;
-      const nb = last + MIN_GROOVE_GAP;
-      out[t][b] = false;
+  out.forEach((row, tone) => {
+    if (TWIN_TINE.has(tone)) return;
+    for (let b = 1; b < MAX_BEAT; b++) {
+      if (!(row[b] && row[b - 1])) continue;
+      const nb = b + 1;
+      row[b] = false;
       used[b] = out.some((r) => r[b]);
-      changed = true;
-      if (nb < MAX_BEAT && !used[nb] && nxt - nb >= MIN_GROOVE_GAP) { out[t][nb] = true; used[nb] = true; last = nb; }
-    });
-  });
-  return changed ? out : null;
-};
-// cells that break the per-groove spacing rule (shown amber)
-export const grooveConflicts = (p) => {
-  const s = new Set();
-  const grooves = new Map();
-  TINES.forEach((tracks, tone) => tracks.forEach((t) => {
-    const g = Math.floor((t - 1) / 2);
-    grooves.set(g, [...(grooves.get(g) || []), tone]);
-  }));
-  grooves.forEach((tonesRaw) => {
-    const tones = [...new Set(tonesRaw)];
-    const notes = [];
-    for (let b = 0; b < MAX_BEAT; b++) tones.forEach((t) => { if (p[t][b]) notes.push([b, t]); });
-    for (let i = 1; i < notes.length; i++) {
-      if (notes[i][0] - notes[i - 1][0] < MIN_GROOVE_GAP) { s.add(`${notes[i][1]}-${notes[i][0]}`); s.add(`${notes[i - 1][1]}-${notes[i - 1][0]}`); }
+      if (nb < MAX_BEAT && !used[nb] && !row[nb + 1]) { row[nb] = true; used[nb] = true; b = nb; }
     }
-    if (notes.length > 1 && notes[0][0] + MAX_BEAT - notes[notes.length - 1][0] < MIN_GROOVE_GAP) s.add(`${notes[0][1]}-${notes[0][0]}`);
+    if (row[0] && row[MAX_BEAT - 1]) row[0] = false;
   });
-  return s;
+  return out;
 };
+export const grooveConflicts = repeatConflicts;
 export const makePlayable = (p) => thinRepeats(staggerPartition(p));
 
 // pitch rows -> 22 physical tracks (mirrors fisher_price.to_physical, with twin overrides)

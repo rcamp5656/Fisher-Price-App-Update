@@ -24,7 +24,7 @@ const emptyAnalysis = () => ({
 const DEFAULTS = {
   title: "", titleB: "", thickness: 3.0, duration: TOY_REV_SECONDS, autoTranspose: true,
   manualOffset: 0, twoSided: false, sideMode: "continue", engrave: true, recordNo: "", nextNo: null,
-  pinRadius: 0.9,
+  pinRadius: 0.8,
 };
 
 export default function Creator() {
@@ -46,6 +46,13 @@ export default function Creator() {
   const [history, setHistory] = useState([]);
   const [loop, setLoop] = useState(false);
   const [combVersion, setCombVersion] = useState(0);
+  const [numStart, setNumStart] = useState(6);
+  const saveNumStart = async (v) => {
+    const n = Math.max(1, Math.min(999, Number(v) || 1));
+    const { data } = await axios.put(`${API}/numbering`, { start: n });
+    setNumStart(data.start);
+    set({ nextNo: null });
+  };
   const skipStale = useRef(false);
 
   const set = (patch) => setS((p) => ({ ...p, ...patch }));
@@ -60,6 +67,7 @@ export default function Creator() {
 
   useEffect(() => {
     axios.get(`${API}/comb`).then(({ data }) => { applyComb(data); setCombVersion((v) => v + 1); }).catch(() => {});
+    axios.get(`${API}/numbering`).then(({ data }) => setNumStart(data.start)).catch(() => {});
     const id = new URLSearchParams(window.location.search).get("open");
     if (!id) return;
     axios.get(`${API}/conversions/${id}`)
@@ -74,7 +82,7 @@ export default function Creator() {
         .then(({ data }) => set({ nextNo: data.record_no })).catch(() => {});
     }, 300);
     return () => clearTimeout(t);
-  }, [s.title, result]);
+  }, [s.title, result, numStart]);
 
   useEffect(() => {
     if (skipStale.current) { skipStale.current = false; return; }
@@ -90,8 +98,8 @@ export default function Creator() {
       setScans((p) => ({ ...p, [key]: data }));
     } catch (e) { setScans((p) => ({ ...p, [key]: null })); }
   };
-  const onFileA = (f) => { setFiles((p) => ({ ...p, a: f })); setStarts((p) => ({ ...p, a: 0 })); setS((p) => ({ ...p, title: p.title || stem(f.name) })); scanFile("a", f); };
-  const onFileB = (f) => { setFiles((p) => ({ ...p, b: f })); setStarts((p) => ({ ...p, b: 0 })); setS((p) => ({ ...p, titleB: p.titleB || stem(f.name) })); scanFile("b", f); };
+  const onFileA = (f) => { setFiles((p) => ({ ...p, a: f })); setStarts((p) => ({ ...p, a: 0 })); setS((p) => ({ ...p, title: stem(f.name) })); scanFile("a", f); };
+  const onFileB = (f) => { setFiles((p) => ({ ...p, b: f })); setStarts((p) => ({ ...p, b: 0 })); setS((p) => ({ ...p, titleB: stem(f.name) })); scanFile("b", f); };
 
   const analyzeSide = async (file, start) => {
     const form = new FormData();
@@ -182,7 +190,7 @@ export default function Creator() {
     setParts({ a: h.partition, b: h.partition_b || null });
     setOverrides({ a: h.overrides || {}, b: h.overrides_b || {} });
     setActive("a"); setStale(false);
-    set({ title: h.title, titleB: h.title_b || "", twoSided: !!h.two_sided, thickness: h.thickness, duration: h.duration, recordNo: "", pinRadius: h.pin_radius || 0.9 });
+    set({ title: h.title, titleB: h.title_b || "", twoSided: !!h.two_sided, thickness: h.thickness, duration: h.duration, recordNo: "", pinRadius: h.pin_radius || 0.8 });
     setTimeout(() => { skipStale.current = false; }, 0);
   };
 
@@ -298,7 +306,7 @@ export default function Creator() {
             <h2 className="font-sans font-black text-xl tracking-tight flex items-center gap-2">
               <Wand2 className="h-5 w-5" /> 2 · SETTINGS
             </h2>
-            <SettingsPanel s={s} set={set} revSeconds={revSeconds} />
+            <SettingsPanel s={s} set={set} revSeconds={revSeconds} numStart={numStart} onNumStart={saveNumStart} />
             <CombEditor onChanged={() => { setAnalysis(null); setResult(null); setParts({ a: null, b: null }); setCombVersion((v) => v + 1); }} />
           </div>
 

@@ -1,0 +1,27 @@
+{
+  "summary": "Iter 7 regression — ramped-cam pins (0.4-1.0, default 0.9), per-groove make_playable rule, partition_midi fallback, playback bounded by first/last used beats. ALL features pass end-to-end. Backend: 62/62 pytest (52 regression + 10 new in test_iter7_playable.py). /api/analyze on sample_twinkle.mid duration=25 -> dropped=7, 21 notes after playable, partition_midi has 28 notes, every groove's cams are >=2 beats apart (circularly) with <=1 note/beat column; duration=12 -> dropped=0, 28 notes. /api/press pin_radius 0.9 -> 200 (STL 300+KB), 0.3/1.2 -> 422; SCAD contains 'pinDepth = 0.9' and matches `pin(…,±1,false);` signatures. Frontend (Playwright on preview URL): (1) Upload twinkle + analyze-button -> stat-dropped=7, dropped-notice + load-midi-raw-button visible; click load-raw -> notes=28, stat-repeats=20, repeat-warning + make-playable-button visible; click make-playable-button -> stat-repeats=0, stat-chords=0. (2) Click empty adjacent cell on single-tine row (tone 6, beat 30) -> stat-repeats jumps to 22, 23 clash-* cells rendered; make-playable-button clears to 0. (3) createOscillator instrumentation on play-button after LOAD NOTES: 88 oscillators (4 partials x 22 notes), min start 0.100 s, max 12.019 s (<= 13 s), play button returns to 'PLAY PREVIEW' within 15 s (not 25 s). (4) pin-radius-slider default 0.9, hint color rgb(69,123,157) blue (not red); set to 0.5 -> hint rgb(230,57,70) red; CUT THE RECORD + title TEST_Iter7_PinR05 -> newest /api/conversions entry has pin_radius=0.5.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter7_playable.py",
+    "/app/test_reports/pytest/iter7.xml"
+  ],
+  "action_items": [
+    "Carry-over (not in scope iter7): GET /api/next-record-no?title= (empty title) still 500s via regex path in server.py _record_no. Not re-exercised."
+  ],
+  "critical_code_review_comments": [
+    "server.py _record_no builds a case-insensitive regex from unescaped title fragment — an empty or regex-special title still crashes (iter5 note, unresolved).",
+    "fisher_price._playable_pass has a loop guard `for _ in range(6)` in make_playable to converge — fine for typical cases but silently truncates if a pathological partition needs more passes. Consider logging when hit.",
+    "frontend lib/fp.js grooveConflicts() marks every pair closer than MIN_GROOVE_GAP within a groove, including the chord case (same beat two tones). Because chordConflicts() also fires on those, a two-tone same-beat selection on tones in the same groove inflates both stat-repeats and stat-chords. Not wrong, just noisy UX.",
+    "useMusicBox.js play() computes layout.len = (last-first+1)*beatSec + 1.2 which omits revSeconds-based tail; wrap-around pins (near beat 85 → beat 0 across revolution) will still schedule within the same window. OK for current preview but may truncate loop audio.",
+    "server.py still uses deprecated @app.on_event('shutdown') (iter4-6 note)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter7_playable.py"],
+  "success_rate": {"backend": "100% (62/62 pytest, 10 new)", "frontend": "100% (10/10 UI assertions across 4 flows)"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "TEST_Iter7Default/Low/High/Scad backend records + TEST_Iter7_PinR05 UI record. Factory comb left intact.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 7 fully green. Hidden file input needs set_input_files directly (don't wait for visible). Primary testids: analyze-button (LOAD NOTES), convert-button (CUT THE RECORD), midi-upload-zone-input. Playback timing verified via AudioContext.prototype.createOscillator wrap in page.add_init_script; min=0.100s, max<=13s on 12s twinkle. pin-radius-hint red = rgb(230,57,70), blue = rgb(69,123,157).",
+  "rca of the issue": "N/A — no new bugs."
+}
