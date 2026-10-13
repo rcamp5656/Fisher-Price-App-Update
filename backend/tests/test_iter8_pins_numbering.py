@@ -71,18 +71,17 @@ def test_analyze_dense_repeat_drops_and_spaces():
                       timeout=30)
     assert r.status_code == 200, r.text
     data = r.json()
-    assert data["dropped"] > 0, f"expected drops, got {data['dropped']}"
+    assert data["dropped"] == 0, f"notes slide to free beats, never dropped; got {data['dropped']}"
+    assert data["staggered"] > 0, "dense repeats must be staggered apart"
     partition = data["partition"]
-    # Find the row with notes (the one receiving C5)
+    beats = len(partition[0])
+    for b in range(beats):
+        assert sum(1 for row in partition if row[b]) <= 1, f"beat {b} holds more than one pin"
     for row in partition:
         hits = [b for b, v in enumerate(row) if v]
         if len(hits) >= 2:
-            # check they are >=2 beats apart (consecutive-beat not allowed on single tine)
-            # but twins may repeat; just assert no two kept consecutive beats on this row
             for i in range(len(hits) - 1):
-                # if it's a single-tine row, this gap must be >=2
-                pass
-            # at least one row has multiple hits — good
+                assert hits[i + 1] - hits[i] >= 2, f"single tine strikes on consecutive beats {hits[i]},{hits[i + 1]}"
             break
 
 

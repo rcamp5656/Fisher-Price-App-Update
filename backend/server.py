@@ -43,6 +43,7 @@ class ConversionSummary(BaseModel):
     record_no: Optional[int] = None
     pin_radius: Optional[float] = None
     toy_fixes: int = 0
+    mesh_check: Optional[dict] = None
     created_at: str
     note_count: int
     exact: int
@@ -268,6 +269,7 @@ async def _store(doc_id, filename, title, out, meta, title_b=None,
                                  "notes_used", "two_sided")},
         "pin_radius": stats.get("pin_radius"),
         "toy_fixes": stats.get("toy_fixes", 0),
+        "mesh_check": stats.get("mesh_check"),
     }
     await db.conversions.insert_one(doc)
     for k in ("stl_b64", "stl_half_a_b64", "stl_half_b_b64", "fpr", "fpr_b", "scad", "_id"):

@@ -1,5 +1,5 @@
 import React from "react";
-import { Download, FileCode, FileText, CheckCircle2, AlertTriangle, History, RotateCcw, Share2, Package } from "lucide-react";
+import { Download, FileCode, FileText, CheckCircle2, AlertTriangle, History, RotateCcw, Share2, Package, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { BTN_BASE, BTN_LIFT, CARD } from "../lib/fp";
 
@@ -73,6 +73,35 @@ function NoteBadge({ name }) {
   );
 }
 
+export function MeshCheck({ check }) {
+  if (!check) return null;
+  const fixes = [
+    [check.holes_filled, "hole triangle(s) filled"],
+    [check.flipped_faces_fixed, "mismatched triangle(s) re-wound"],
+    [check.duplicate_faces_removed, "duplicate triangle(s) removed"],
+    [check.degenerate_faces_removed, "zero-area triangle(s) removed"],
+  ].filter(([n]) => n > 0);
+  return (
+    <div data-testid="mesh-check" className={`mt-4 border-2 border-[#1D3557] rounded-lg p-3 font-mono text-xs ${check.ok ? "bg-[#2A9D8F]/15" : "bg-[#FFB703]"}`}>
+      <div className="flex items-center gap-2 font-sans font-black text-sm">
+        {check.ok ? <ShieldCheck className="h-4 w-4 text-[#2A9D8F]" /> : <AlertTriangle className="h-4 w-4 text-[#E63946]" />}
+        MESH CHECK — {check.ok ? "PRINT READY" : "NEEDS ATTENTION"}
+      </div>
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+        <span data-testid="mesh-watertight">{check.watertight ? "✓" : "✗"} watertight</span>
+        <span data-testid="mesh-winding">{check.winding_consistent ? "✓" : "✗"} consistent triangle winding</span>
+        <span data-testid="mesh-open-edges">{check.open_edges_after === 0 ? "✓" : "✗"} {check.open_edges_after} open edge(s)</span>
+        <span>{check.bodies} solid body{check.bodies === 1 ? "" : "ies"}</span>
+        {check.volume_mm3 != null && <span>{(check.volume_mm3 / 1000).toFixed(1)} cm³</span>}
+        {check.halves_ok != null && <span>{check.halves_ok ? "✓" : "✗"} half discs</span>}
+      </div>
+      <div className="mt-1 text-[#457B9D]" data-testid="mesh-fixes">
+        {fixes.length ? `Repaired before export: ${fixes.map(([n, l]) => `${n} ${l}`).join(" · ")}` : "No repairs were needed — the mesh came out clean."}
+      </div>
+    </div>
+  );
+}
+
 export function SpecSheet({ result }) {
   const cells = [
     ["Record #", result.record_no ?? "—"],
@@ -107,6 +136,7 @@ export function SpecSheet({ result }) {
             </div>
           ))}
         </div>
+        <MeshCheck check={result.mesh_check} />
       </div>
       <div className="md:col-span-5 bg-[#FFB703] border-2 border-[#1D3557] shadow-[4px_4px_0_0_#1D3557] rounded-xl p-6 font-mono text-sm">
         <h3 className="font-sans font-black text-lg tracking-tight mb-3">PITCHES USED (22-TINE COMB)</h3>

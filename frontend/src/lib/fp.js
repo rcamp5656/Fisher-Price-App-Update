@@ -59,38 +59,49 @@ export const chordConflicts = (p) => {
   return s;
 };
 
-// move same-beat notes to the nearest free beat (one tine per beat)
+// minimum beat spacing between two pins of one pitch (single tines need a rest beat)
+const gapBeats = (tone) => (TWIN_TINE.has(tone) ? 1 : 2);
+// one pin per beat on the whole disc + per-pitch spacing (disc wraps) — mirrors fisher_price._can_place
+const canPlace = (p, tone, b) => {
+  if (p.some((row) => row[b])) return false;
+  for (let d = 1; d < gapBeats(tone); d++) {
+    if (p[tone][(b - d + MAX_BEAT) % MAX_BEAT] || p[tone][(b + d) % MAX_BEAT]) return false;
+  }
+  return true;
+};
+// move the pin at (tone, b) to the nearest free beat, searching `prefer` direction first
+const slide = (p, tone, b, prefer) => {
+  p[tone][b] = false;
+  for (let d = 1; d < MAX_BEAT; d++) {
+    for (const nb of [b + prefer * d, b - prefer * d]) {
+      if (nb >= 0 && nb < MAX_BEAT && canPlace(p, tone, nb)) { p[tone][nb] = true; return true; }
+    }
+  }
+  return false;
+};
+
+// roll same-beat notes like the factory records: top note keeps the beat, lower ones slide (preferring earlier)
 export const staggerPartition = (p) => {
   const out = clonePartition(p);
-  const used = Array.from({ length: MAX_BEAT }, (_, b) => out.some((row) => row[b]));
   for (let b = 0; b < MAX_BEAT; b++) {
     const tones = [];
     out.forEach((row, t) => { if (row[b]) tones.push(t); });
-    for (let k = 1; k < tones.length; k++) {
-      const t = tones[k];
-      for (const d of [1, -1, 2, -2, 3, -3, 4, -4]) {
-        const nb = b + d;
-        if (nb >= 0 && nb < MAX_BEAT && !used[nb]) { out[t][b] = false; out[t][nb] = true; used[nb] = true; break; }
-      }
-    }
+    tones.slice(0, -1).forEach((t) => slide(out, t, b, -1));
   }
   return out;
 };
 
-// a single tine can't strike on consecutive beats: slide the second strike a beat later if free, else drop it
+// a single tine can't strike on consecutive beats: slide the later strike to the nearest free beat
 export const thinRepeats = (p) => {
   const out = clonePartition(p);
-  const used = Array.from({ length: MAX_BEAT }, (_, b) => out.some((row) => row[b]));
   out.forEach((row, tone) => {
-    if (TWIN_TINE.has(tone)) return;
-    for (let b = 1; b < MAX_BEAT; b++) {
-      if (!(row[b] && row[b - 1])) continue;
-      const nb = b + 1;
-      row[b] = false;
-      used[b] = out.some((r) => r[b]);
-      if (nb < MAX_BEAT && !used[nb] && !row[nb + 1]) { row[nb] = true; used[nb] = true; b = nb; }
+    const gap = gapBeats(tone);
+    if (gap < 2) return;
+    for (let b = 0; b < MAX_BEAT; b++) {
+      let clash = false;
+      for (let d = 1; d < gap; d++) if (row[(b - d + MAX_BEAT) % MAX_BEAT]) clash = true;
+      if (row[b] && clash) slide(out, tone, b, 1);
     }
-    if (row[0] && row[MAX_BEAT - 1]) row[0] = false;
   });
   return out;
 };

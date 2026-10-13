@@ -242,7 +242,7 @@ export default function Creator() {
 
   return (
     <div className="min-h-screen bg-[#F4F1EA] text-[#1D3557] fp-grain" key={combVersion}>
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 p-6 md:p-12 max-w-[1400px] mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 p-6 md:p-10 max-w-[1800px] mx-auto">
         <header className="col-span-12 flex flex-wrap gap-4 justify-between items-end border-b-4 border-[#1D3557] pb-6">
           <div className="flex items-center gap-4">
             <div className="h-14 w-14 rounded-full border-2 border-[#1D3557] bg-[#E63946] shadow-[3px_3px_0_0_#1D3557] flex items-center justify-center">
@@ -259,7 +259,7 @@ export default function Creator() {
         </header>
 
         {/* Workspace */}
-        <section data-testid="viewer-panel" className="col-span-12 lg:col-span-8 border-2 border-[#1D3557] shadow-[4px_4px_0_0_#1D3557] rounded-2xl overflow-hidden min-h-[55vh] relative bg-[#F4F1EA] flex flex-col">
+        <section data-testid="viewer-panel" className="col-span-12 lg:col-span-9 border-2 border-[#1D3557] shadow-[4px_4px_0_0_#1D3557] rounded-2xl overflow-hidden min-h-[55vh] relative bg-[#F4F1EA] flex flex-col">
           <div className="flex items-center gap-2 p-3 border-b-2 border-[#1D3557]/20 bg-white/60">
             <TabBtn id="notes" icon={Grid3X3} label="NOTES" disabled={!analysis} />
             <TabBtn id="preview" icon={Box} label="3D PREVIEW" disabled={!result} />
@@ -308,7 +308,7 @@ export default function Creator() {
         </section>
 
         {/* Controls */}
-        <aside className="col-span-12 lg:col-span-4 flex flex-col gap-6">
+        <aside className="col-span-12 lg:col-span-3 flex flex-col gap-6">
           <div className={`${CARD} p-5 flex flex-col gap-3`}>
             <div className="flex items-center justify-between gap-2">
               <h2 className="font-sans font-black text-xl tracking-tight flex items-center gap-2">

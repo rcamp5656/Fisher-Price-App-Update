@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 9 regression — server-side stagger + make_playable on POST /api/press, toy_fixes, pin_radius default 0.8, UI reset/continue-title/window-play/window-start auto-reanalyze/duration-value 'of song'/notice-panel/Staggered cell/chords=0 after press. 62/63 backend tests pass (iter9 2/3 pass, 60/60 regression). Frontend: ALL iter9 flows PASS end-to-end on preview URL. One backend concern: toy_fixes under-counts single-tine consecutive-beat SLIDES (counts only drops from make_playable), so chord + single-tine-repeat scenario yielded toy_fixes=1 instead of >=2 as called out in the request.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/press", "issue": "toy_fixes under-counts: fisher_price.press returns stagger_moved + make_playable_dropped. make_playable also SLIDES consecutive single-tine notes to the next free beat (not dropped) and those successful slides are NOT counted in toy_fixes. Spec says 'slides to nearest free beat, else drops' — both should be reported as fixes. Repro: partition with chord on beat 10 AND single-tine tone 4 on beats 30,31 -> toy_fixes = 1 (should be >=2). Fix: have make_playable return total adjustments (slides + drops), e.g. increment a counter when the second strike is moved to nb successfully as well as when dropped. Returned/echoed partition itself IS correct (one pin per beat, no consecutive single-tines).", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter9_stagger_toyfixes.py",
+    "/app/test_reports/pytest/iter9_full.xml"
+  ],
+  "action_items": [
+    "fisher_price.make_playable: count successful slides into the returned count (or expose a separate counter) so server press returns toy_fixes >= actual number of fixes performed. Current implementation only returns dropped; the slide branch sets row[nb]=True without incrementing a 'moved' tally. Expected toy_fixes = stagger_moved + singletine_slid + singletine_dropped."
+  ],
+  "critical_code_review_comments": [
+    "fisher_price.make_playable returns dropped count only; successful consecutive-beat slides are silent fixes. Rename to e.g. 'fixed' and increment on both the slide and drop branches to match the spec and UI 'Staggered' cell semantics.",
+    "server.py _record_no builds regex from user-supplied title using re.escape — OK, no change. Still uses deprecated @app.on_event('shutdown') (carried over).",
+    "fisher_price.press mutates the input partition in place (stagger_partition / make_playable) before storing — fine since server echoes the fixed partition, but worth noting the API side-effect: callers who send partition and reuse it will see it mutated.",
+    "fisher_price.py is now ~820 lines; still under 1k but close to the split-threshold. Consider separating geometry/mesh (build_mesh, SCAD) from analysis (events_to_record, make_playable, stagger_partition)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter9_stagger_toyfixes.py"
+  ],
+  "success_rate": {"backend": "98% (62/63 — iter9 2/3 pass; all 60 previous pass)", "frontend": "100% (all iter9 UI assertions pass)"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "TEST_Iter9_StagChord, TEST_Iter9_PinDefault, TEST_Iter9_Clean. numbering start restored to 6 by autouse fixture.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter9: POST /api/press always runs stagger_partition + make_playable server-side; echoes fixed partition; UI shows notice-panel when toy_fixes>0 and ResultPanels renders 'Staggered' row with result.toy_fixes. UI chord/repeat warnings auto-stagger on cut. Grid cells have data-tone and data-beat on every <div>; filled cells also carry data-testid note-{tone}-{beat} or clash-{tone}-{beat}. [data-testid^='note-'] also matches 'note-editor' so filter with /^note-\\d+-\\d+$/. Duration slider is a radix Slider — role='slider' doesn't apply reliably in this build; the duration-value text 'Xs of song' is the source of truth. window-play uses AudioContext.createOscillator (112 oscillators scheduled for the 5s twinkle slice). Record numbering reused the previous numbering_start=150 fixture leftover during this run — reset to 6 at end.",
+  "rca of the issue": "fisher_price.make_playable (line 223+) was renamed from the previous 'playable' helper but still returns only 'dropped'. In its inner loop, when row[nb] is free it sets row[nb]=True and continues WITHOUT incrementing dropped (correct, it wasn't dropped) and also without incrementing any 'moved/slid' counter. Server press then sums stagger_partition's moved + make_playable's dropped into toy_fixes; the silent-slide fixes are therefore invisible to the UI 'Staggered' cell and the notice-panel. Mitigation: introduce a `moved` local in make_playable, increment on both the slide branch (`row[nb]=True`) and the drop branch, and return (moved + dropped) or expose both separately."
+}

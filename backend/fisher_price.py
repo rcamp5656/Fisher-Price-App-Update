@@ -111,28 +111,41 @@ def midi_length(midi_bytes: bytes) -> float:
     return mido.MidiFile(file=io.BytesIO(midi_bytes)).length
 
 
-def choose_transposition(notes: List[int], comb: Comb = DEFAULT_COMB) -> int:
-    """Find the semitone offset that lands the most notes exactly on the
-    playable pitch set (tie-break: smallest total snap distance)."""
+def choose_transposition(notes: List[int], comb: Comb = DEFAULT_COMB,
+                         tolerance: float = 0.15) -> int:
+    """Key-faithful transposition: keep the MIDI's own pitches (offset 0) when
+    at least (1 - tolerance) of the notes already sit on real tines; otherwise
+    prefer octave shifts, then the smallest shift that fits the most notes."""
     allowed = set(comb.notes)
     lo, hi = min(comb.notes), max(comb.notes)
-    best_offset, best_score = 0, None
-    for offset in range(-48, 49):
-        exact = 0
-        dist = 0
-        for n in notes:
-            m = n + offset
-            if m in allowed:
-                exact += 1
-            dist += min(abs(m - a) for a in comb.notes)
-        avg = (sum(notes) / len(notes)) + offset
+    n = len(notes)
+
+    def fit(offset):
+        exact = sum(1 for x in notes if x + offset in allowed)
+        dist = sum(min(abs(x + offset - a) for a in comb.notes) for x in notes)
+        return exact, dist
+
+    exact0, _ = fit(0)
+    if exact0 >= n * (1 - tolerance):
+        return 0
+    best = None
+    for offset in range(-36, 37):
+        avg = sum(notes) / n + offset
         if not (lo - 6 <= avg <= hi + 6):
             continue
-        score = (exact, -dist)
-        if best_score is None or score > best_score:
-            best_score = score
-            best_offset = offset
-    return best_offset
+        exact, dist = fit(offset)
+        octave = offset % 12 == 0
+        score = (exact, octave, -abs(offset), -dist)
+        if best is None or score > best[0]:
+            best = (score, offset)
+    if best is None:
+        return 0
+    # settle for a nearby octave-only shift if it is almost as good
+    best_exact = best[0][0]
+    for offset in (-12, 12, -24, 24):
+        if fit(offset)[0] >= best_exact - max(1, int(n * tolerance)):
+            return offset
+    return best[1]
 
 
 def snap_note(midi: int, comb: Comb = DEFAULT_COMB) -> int:
@@ -167,13 +180,6 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
         tone = comb.notes.index(snapped)
         beat = round(t / duration * MAX_BEAT) if duration > 0 else 0
         beat = max(0, min(MAX_BEAT - 1, beat))
-        if stagger and col_used[beat] and not partition[tone][beat]:
-            for d in (1, -1, 2, -2, 3, -3):
-                nb = beat + d
-                if 0 <= nb < MAX_BEAT and not col_used[nb]:
-                    beat = nb
-                    staggered += 1
-                    break
         if partition[tone][beat]:
             merged += 1
         partition[tone][beat] = True
@@ -181,7 +187,9 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
         used.add(snapped)
 
     partition_midi = [list(r) for r in partition]
-    dropped = make_playable(partition, comb)
+    staggered = stagger_partition(partition, comb) if stagger else 0
+    slid, dropped = make_playable(partition, comb)
+    staggered += slid
 
     return {
         "partition": partition,
@@ -200,56 +208,77 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
 # ---------------------------------------------------------------------------
 # 16 tones -> 22 physical tracks (doubled tracks let fast repeats reset)
 # ---------------------------------------------------------------------------
-def stagger_partition(partition: List[List[bool]]) -> int:
-    """One pin per beat across the whole disc, like the factory records:
-    extra notes on a beat slide to the nearest free beat (else dropped)."""
+MIN_PIN_ARC_MM = 2.0  # pins in one groove must be at least this far apart along the groove
+
+
+def _gap_beats(tone: int, comb: Comb, beats: int) -> int:
+    """Minimum beat spacing between two pins of one pitch: >= MIN_PIN_ARC_MM
+    along the track, and a rest beat for single tines (they can't re-strike)."""
+    radius = min(TRACK_RADIUS[t] for t in comb.tines[tone])
+    gap = max(1, math.ceil(MIN_PIN_ARC_MM / (2 * math.pi * radius / beats)))
+    return max(gap, 2) if len(comb.tines[tone]) == 1 else gap
+
+
+def _can_place(partition: List[List[bool]], tone: int, b: int, comb: Comb) -> bool:
+    """One pin per beat on the whole disc + per-pitch spacing (disc wraps)."""
+    beats = len(partition[0])
+    if any(row[b] for row in partition):
+        return False
+    row = partition[tone]
+    for d in range(1, _gap_beats(tone, comb, beats)):
+        if row[(b - d) % beats] or row[(b + d) % beats]:
+            return False
+    return True
+
+
+def _slide(partition: List[List[bool]], tone: int, b: int, comb: Comb, prefer: int) -> bool:
+    """Move the pin at (tone, b) to the nearest free beat (searching `prefer`
+    direction first). Returns False only when the disc has no room at all."""
+    beats = len(partition[0])
+    partition[tone][b] = False
+    for d in range(1, beats):
+        for nb in (b + prefer * d, b - prefer * d):
+            if 0 <= nb < beats and _can_place(partition, tone, nb, comb):
+                partition[tone][nb] = True
+                return True
+    return False
+
+
+def stagger_partition(partition: List[List[bool]], comb: Comb = DEFAULT_COMB) -> int:
+    """The player plucks one tine at a time: notes sharing a beat are rolled
+    like the factory records — the top (melody) note keeps the beat, the lower
+    notes slide to the nearest free beats, preferring just before it."""
     beats = len(partition[0])
     moved = 0
-    used = [any(row[b] for row in partition) for b in range(beats)]
     for b in range(beats):
-        tones = [t for t, row in enumerate(partition) if row[b]]
-        for t in tones[1:]:
-            partition[t][b] = False
+        hits = [t for t in range(len(partition)) if partition[t][b]]
+        for t in hits[:-1]:
+            _slide(partition, t, b, comb, prefer=-1)
             moved += 1
-            for d in (1, -1, 2, -2, 3, -3, 4, -4):
-                nb = b + d
-                if 0 <= nb < beats and not used[nb]:
-                    partition[t][nb] = True
-                    used[nb] = True
-                    break
     return moved
 
 
-def make_playable(partition: List[List[bool]], comb: Comb = DEFAULT_COMB) -> int:
-    """Enforce the toy's mechanics in place: one note per beat across the disc
-    (done by stagger) and a single tine cannot strike on two consecutive beats
-    (it is still deflected). The second strike slides one beat later if that
-    beat is free, otherwise it is dropped. Twin tines alternate, so they may
-    repeat beat to beat. Returns notes dropped."""
-    dropped = 0
+def make_playable(partition: List[List[bool]], comb: Comb = DEFAULT_COMB) -> Tuple[int, int]:
+    """Enforce per-pitch spacing in place: a single tine cannot strike on two
+    consecutive beats (it is still deflected), and pins on one track must sit
+    >= MIN_PIN_ARC_MM apart. The later strike slides to the nearest free beat
+    (preferring later). Returns (slid, dropped) — dropped only on a full disc."""
+    slid = dropped = 0
     beats = len(partition[0])
-    col_used = [any(row[b] for row in partition) for b in range(beats)]
-    for tone, tracks in enumerate(comb.tines):
-        if len(tracks) > 1:
-            continue
+    for tone in range(len(partition)):
         row = partition[tone]
-        b = 1
+        gap = _gap_beats(tone, comb, beats)
+        if gap < 2:
+            continue
+        b = 0
         while b < beats:
-            if row[b] and row[b - 1]:
-                nb = b + 1
-                row[b] = False
-                col_used[b] = any(r[b] for r in partition)
-                if nb < beats and not col_used[nb] and not (nb + 1 < beats and row[nb + 1]):
-                    row[nb] = True
-                    col_used[nb] = True
-                    b = nb + 1
-                    continue
-                dropped += 1
+            if row[b] and any(row[(b - d) % beats] for d in range(1, gap)):
+                if _slide(partition, tone, b, comb, prefer=1):
+                    slid += 1
+                else:
+                    dropped += 1
             b += 1
-        if row[0] and row[beats - 1]:
-            row[0] = False
-            dropped += 1
-    return dropped
+    return slid, dropped
 
 
 def to_physical(partition: List[List[bool]], comb: Comb = DEFAULT_COMB,
@@ -713,6 +742,50 @@ def _finish_analysis(rec: Dict, duration: float, start: float) -> Dict:
     return rec
 
 
+def heal_mesh(mesh: trimesh.Trimesh) -> Tuple[trimesh.Trimesh, Dict]:
+    """Printer pre-flight: merge seams, drop duplicate/degenerate triangles,
+    fix mismatched (inverted) windings, fill holes, then verify watertight."""
+    faces_before = int(len(mesh.faces))
+    open_edges_before = int((trimesh.grouping.group_rows(mesh.edges_sorted, require_count=1)).shape[0])
+    winding_ok_before = bool(mesh.is_winding_consistent)
+    mesh.merge_vertices()
+    mesh.update_faces(mesh.unique_faces())
+    after_dupes = int(len(mesh.faces))
+    mesh.update_faces(mesh.nondegenerate_faces())
+    after_degen = int(len(mesh.faces))
+    flipped = 0
+    if not mesh.is_winding_consistent:
+        before = mesh.faces.copy()
+        trimesh.repair.fix_winding(mesh)
+        flipped = int((before != mesh.faces).any(axis=1).sum())
+    holes_filled = 0
+    if open_edges_before or not mesh.is_watertight:
+        n0 = len(mesh.faces)
+        trimesh.repair.fill_holes(mesh)
+        holes_filled = int(len(mesh.faces) - n0)
+    if mesh.is_watertight and mesh.volume < 0:
+        mesh.invert()
+        flipped += int(len(mesh.faces))
+    trimesh.repair.fix_normals(mesh)
+    open_edges_after = int((trimesh.grouping.group_rows(mesh.edges_sorted, require_count=1)).shape[0])
+    report = {
+        "watertight": bool(mesh.is_watertight),
+        "winding_consistent": bool(mesh.is_winding_consistent),
+        "winding_was_consistent": winding_ok_before,
+        "open_edges_before": open_edges_before,
+        "open_edges_after": open_edges_after,
+        "holes_filled": holes_filled,
+        "duplicate_faces_removed": faces_before - after_dupes,
+        "degenerate_faces_removed": after_dupes - after_degen,
+        "flipped_faces_fixed": flipped,
+        "faces": int(len(mesh.faces)),
+        "volume_mm3": round(float(abs(mesh.volume)), 1) if mesh.is_watertight else None,
+        "bodies": int(len(mesh.split(only_watertight=False))) if mesh.is_watertight else None,
+    }
+    report["ok"] = report["watertight"] and report["winding_consistent"] and open_edges_after == 0
+    return mesh, report
+
+
 def _stl(mesh) -> bytes:
     b = mesh.export(file_type="stl")
     return b.encode() if isinstance(b, str) else bytes(b)
@@ -727,18 +800,22 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
     flat-backed halves to print pins-up and glue back to back (no supports)."""
     label_a = title if engrave else ""
     label_b = title_b if engrave else ""
-    toy_fixes = stagger_partition(partition) + make_playable(partition, comb)
+    toy_fixes = stagger_partition(partition, comb) + sum(make_playable(partition, comb))
     if partition_b is not None:
-        toy_fixes += stagger_partition(partition_b) + make_playable(partition_b, comb)
+        toy_fixes += stagger_partition(partition_b, comb) + sum(make_playable(partition_b, comb))
     common = dict(marks=engrave, record_no=record_no, comb=comb, pin_radius=pin_radius)
     mesh, pin_count = build_mesh(partition, thickness, label_a, partition_b, label_b,
                                  overrides=overrides, overrides_b=overrides_b, **common)
+    mesh, mesh_check = heal_mesh(mesh)
     stl_bytes = _stl(mesh)
     halves = {}
     if partition_b is not None:
         half = thickness / 2
         ha, _ = build_mesh(partition, half, label_a, overrides=overrides, flat_back=True, **common)
         hb, _ = build_mesh(partition_b, half, label_b, overrides=overrides_b, flat_back=True, **common)
+        ha, rep_a = heal_mesh(ha)
+        hb, rep_b = heal_mesh(hb)
+        mesh_check["halves_ok"] = bool(rep_a["ok"] and rep_b["ok"])
         halves = {"stl_half_a": _stl(ha), "stl_half_b": _stl(hb)}
     used = sorted({comb.notes[t] for part in (partition, partition_b or [])
                    for t, row in enumerate(part) if any(row)})
@@ -754,6 +831,7 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
             "pin_count": pin_count,
             "pin_radius": pin_radius,
             "toy_fixes": toy_fixes,
+            "mesh_check": mesh_check,
             "thickness": thickness,
             "beats": MAX_BEAT,
             "triangles": int(len(mesh.faces)),

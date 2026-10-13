@@ -70,6 +70,7 @@ motor==3.3.1
 multidict==6.9.1
 mypy==2.4.0
 mypy_extensions==1.1.0
+networkx==3.6.1
 numpy==2.4.6
 oauthlib==4.0.0
 openai==1.99.9
@@ -111,6 +112,7 @@ rpds-py==2026.9.1
 rsa==4.9.1
 s3transfer==0.19.2
 s5cmd==0.2.0
+scipy==1.17.1
 shapely==2.2.0
 shellingham==1.5.4
 six==1.17.0

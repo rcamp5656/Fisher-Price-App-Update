@@ -19,6 +19,7 @@ export default function EditorWorkspace({
 }) {
   const side = sides.find((s) => s.key === active) || sides[0];
   const [view, setView] = useState("pitch");
+  const [fit, setFit] = useState(false);
   const sequence = useMemo(() => sides.map((s) => s.partition), [sides]);
   const { playing, sideIdx, play, stop, getPos, tap } = useMusicBox(sequence, revSeconds, loop);
   const a = side.analysis;
@@ -53,6 +54,13 @@ export default function EditorWorkspace({
             </button>
           ))}
         </div>
+        <button
+          type="button" data-testid="fit-toggle" onClick={() => setFit(!fit)}
+          className={`font-sans font-black text-xs px-3 py-1.5 rounded-lg border-2 border-[#1D3557] ${fit ? "bg-[#2A9D8F] text-white" : "bg-white hover:bg-[#E9C46A]"}`}
+          title="Show only the beats that carry notes"
+        >
+          {fit ? "FIT TO NOTES" : "ALL 86 BEATS"}
+        </button>
         {sides.length > 1 && sides.map((s, i) => (
           <button
             key={s.key}
@@ -75,14 +83,14 @@ export default function EditorWorkspace({
           <Stat label="Chords" value={chordCount} warn={chordCount > 0} testId="stat-chords" />
           {a.staggered > 0 && <Stat label="Staggered" value={a.staggered} testId="stat-staggered" />}
           {a.dropped > 0 && <Stat label="Dropped" value={a.dropped} warn testId="stat-dropped" />}
-          <Stat label="Transpose" value={`${a.offset >= 0 ? "+" : ""}${a.offset}`} />
+          <Stat label="Transpose" value={a.offset === 0 ? "none" : `${a.offset > 0 ? "+" : ""}${a.offset}${a.offset % 12 === 0 ? " (octave)" : ""}`} testId="stat-transpose" />
         </div>
       </div>
 
       {a.dropped > 0 && (
         <p data-testid="dropped-notice" className="font-mono text-[11px] text-[#1D3557] bg-white border-2 border-[#1D3557] rounded-md px-2 py-1 flex items-center gap-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          {a.dropped} MIDI note(s) were dropped to fit the toy (a single tine can't strike on consecutive beats and there was no free beat to slide to). The MIDI capture is kept —
+          {a.dropped} MIDI note(s) could not be placed — the disc is completely full, there was no free beat left to slide to. The MIDI capture is kept —
           {a.partition_midi && (
             <button type="button" data-testid="load-midi-raw-button" onClick={() => side.onChange(a.partition_midi)}
               className="font-sans font-black text-[11px] px-2 py-0.5 rounded border-2 border-[#1D3557] bg-[#E9C46A] flex items-center gap-1 whitespace-nowrap">
@@ -119,7 +127,7 @@ export default function EditorWorkspace({
       )}
 
       <div className="overflow-x-auto flex-1">
-        <div className="min-w-[760px]">
+        <div className="min-w-[700px]">
           {view === "tracks" ? (
             <TrackView partition={side.partition} duration={duration} overrides={side.overrides} onOverrides={side.onOverrides} />
           ) : (
@@ -127,10 +135,12 @@ export default function EditorWorkspace({
               partition={side.partition}
               onChange={side.onChange}
               duration={duration}
+              start={a.start || 0}
               playing={playing}
               getBeat={getBeat}
               onTap={tap}
               conflicts={conflicts}
+              fit={fit}
             />
           )}
         </div>
