@@ -30,8 +30,14 @@ H_GROOVE = 1.2        # depth of the note grooves
 OVERLAP = 0.2         # modelling overlap to keep booleans manifold
 R_CENTER = 3.22       # centre spindle hole radius
 HEAD_OFFSET = 2.0     # angular lead of the playback head
-R_PIN = 0.8           # pin height: apex protrusion into the groove
-PIN_BASE = 1.6        # pin base length along the groove wall (flatter ramp, reads as part of the wall)
+R_PIN = 0.9           # pin height: apex protrusion into the groove (user print test: 0.8 felt a touch small)
+PIN_BASE_RATIO = 2.0  # pin base length = ratio x apex height (0.9 -> 1.8 mm), so chunkier pins stay the same shape
+PIN_BASE_MAX = 1.9    # never wider than the 2 mm stagger minimum between pins on one track
+PIN_BASE = min(PIN_BASE_MAX, PIN_BASE_RATIO * R_PIN)
+
+
+def pin_base(depth: float) -> float:
+    return round(min(PIN_BASE_MAX, PIN_BASE_RATIO * float(depth)), 3)
 PIN_SINK = 0.5        # how deep the pin base is buried in the wall so slicers never open a seam
 
 # Groove inner radii (11 grooves, each holds two note tracks)
@@ -915,11 +921,11 @@ def _groove_cutters(H: float) -> List:
 
 
 def _cam_polygon(direction: int, depth: float):
-    """Plan-view pin: isosceles triangle whose base (PIN_BASE long) is buried
+    """Plan-view pin: isosceles triangle whose base (2 x depth, capped) is buried
     PIN_SINK into the groove wall, apex `depth` into the groove at the beat."""
     from shapely.geometry import Polygon
     d = direction
-    half = PIN_BASE / 2
+    half = pin_base(depth) / 2
     return Polygon([(-d * PIN_SINK, -half), (-d * PIN_SINK, half), (0.0, half),
                     (d * depth, 0.0), (0.0, -half)])
 
@@ -1155,7 +1161,7 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
         DATE_TIME=datetime.now().strftime("%d %b %Y %H:%M"),
         THICKNESS=thickness,
         PIN_R=pin_radius,
-        PIN_BASE=PIN_BASE,
+        PIN_BASE=pin_base(pin_radius),
         PIN_SINK=PIN_SINK,
         DED_R=DED_R,
         DEDICATION=_scad_str(DEDICATION),

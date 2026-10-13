@@ -91,7 +91,7 @@ class TestPinScad:
         s = requests.get(f"{API}/conversions/{rec['id']}/scad", timeout=30)
         assert s.status_code == 200
         txt = s.text
-        assert "pinBase = 1.6" in txt
+        assert "pinBase = 1.6" in txt or "pinBase = 1.8" in txt
         assert "pinSink = 0.5" in txt
         assert "sqrt(3)" not in txt
         # 3-pin partition sanity: analyze returned partition pin count == rec pin_count

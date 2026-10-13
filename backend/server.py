@@ -114,7 +114,7 @@ class PressRequest(BaseModel):
     adjusted: int = 0
     merged: int = 0
     record_no: Optional[int] = Field(None, ge=1, le=999)
-    pin_radius: float = Field(0.8, ge=0.4, le=1.0)
+    pin_radius: float = Field(0.9, ge=0.4, le=1.2)
     ded_height: float = Field(2.4, ge=2.0, le=3.5)
     ded_b: bool = True
     ded_font: str = Field("bold", pattern="^(bold|rounded|script)$")
@@ -564,7 +564,7 @@ async def make_album(
     two_sided: bool = Form(True),
     thickness: float = Form(5.0),
     engrave: bool = Form(True),
-    pin_radius: float = Form(0.8),
+    pin_radius: float = Form(0.9),
     roll: str = Form("before"),
     auto_transpose: bool = Form(True),
     manual_offset: int = Form(0),
@@ -584,7 +584,7 @@ async def make_album(
         "duration": duration if duration <= 0 else max(5.0, min(60.0, duration)),
         "rev_seconds": max(5.0, min(60.0, rev_seconds)), "two_sided": two,
         "thickness": max(4.5 if two else 1.5, min(8.0, thickness)), "engrave": bool(engrave),
-        "pin_radius": max(0.4, min(1.0, pin_radius)), "roll": "after" if roll == "after" else "before",
+        "pin_radius": max(0.4, min(1.2, pin_radius)), "roll": "after" if roll == "after" else "before",
         "auto_transpose": bool(auto_transpose), "manual_offset": manual_offset,
         "ded_height": max(2.0, min(3.5, ded_height)), "ded_b": bool(ded_b), "ded_font": ded_font,
     }
@@ -831,7 +831,7 @@ async def label_preview(font: str = "bold", height: float = 2.4, title: str = ""
 
 
 @api_router.post("/testdisc", response_model=ConversionSummary)
-async def test_disc(thickness: float = Form(3.0), pin_radius: float = Form(0.8), engrave: bool = Form(True), ded_height: float = Form(2.4), ded_font: str = Form("bold")):
+async def test_disc(thickness: float = Form(3.0), pin_radius: float = Form(0.9), engrave: bool = Form(True), ded_height: float = Form(2.4), ded_font: str = Form("bold")):
     """Chord test disc: the same phrase as single notes, two-note chords and triads."""
     comb = await _comb()
     partition = fp.chord_test_partition(comb)
@@ -839,7 +839,7 @@ async def test_disc(thickness: float = Form(3.0), pin_radius: float = Form(0.8),
     record_no = await _record_no(title)
     out = await run_in_threadpool(fp.press, partition, title, max(1.5, min(8.0, thickness)), None, "",
                                   bool(engrave), record_no, comb, None, None,
-                                  max(0.4, min(1.0, pin_radius)), "before", True, 3, max(2.0, min(3.5, ded_height)), True, ded_font)
+                                  max(0.4, min(1.2, pin_radius)), "before", True, 3, max(2.0, min(3.5, ded_height)), True, ded_font)
     meta = {"note_count": sum(sum(r) for r in partition), "exact": 0, "adjusted": 0, "merged": 0,
             "offset": 0, "duration": 25.0}
     return await _store(str(uuid.uuid4()), "chord-test.mid", title, out, meta, None, partition, None,

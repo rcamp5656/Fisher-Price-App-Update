@@ -226,7 +226,7 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
       <div>
         <Row icon={Ruler} label="Pin height (triangle)" value={`${s.pinRadius.toFixed(2)}mm`} testId="pin-radius-value" />
         <input
-          type="range" min="0.4" max="1.0" step="0.05" value={s.pinRadius}
+          type="range" min="0.4" max="1.2" step="0.05" value={s.pinRadius}
           data-testid="pin-radius-slider"
           onChange={(e) => set({ pinRadius: Number(e.target.value) })}
           className="w-full mt-2 accent-[#E63946]"
@@ -234,7 +234,7 @@ export default function SettingsPanel({ s, set, revSeconds, numStart, onNumStart
         <p className={`font-mono text-[10px] mt-1 ${s.pinRadius < 0.6 ? "text-[#E63946] font-bold" : "text-[#457B9D]"}`} data-testid="pin-radius-hint">
           {s.pinRadius < 0.6
             ? "Shallow pin — the tine may not be pushed far enough to ring. Originals ≈ 0.8 mm."
-            : `Triangle ramp on the groove wall: 1.6 mm base buried 0.5 mm into the wall, apex pushing the tine sideways by this much. Originals ≈ 0.8 mm.`}
+            : `Triangle ramp on the groove wall: ${Math.min(1.9, 2 * s.pinRadius).toFixed(1)} mm base buried 0.5 mm into the wall, apex pushing the tine sideways by this much. Originals ≈ 0.8 mm; 0.9 is your print-tested default (0.8 felt a touch small).`}
         </p>
       </div>
 

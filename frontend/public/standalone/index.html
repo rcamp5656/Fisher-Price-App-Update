@@ -1,0 +1,917 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fisher-Price Record Maker — HTML5 edition</title>
+<!-- Dedicated To My Fiancée Barbara · Copyright 2026 Russ Campbell. All rights reserved. -->
+<script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<style>/* ===== style.css — Fisher-Price Record Maker (HTML5 edition) ===== */
+:root{--navy:#1D3557;--red:#E63946;--teal:#2A9D8F;--sun:#E9C46A;--gold:#FFB703;--blue:#457B9D;--cream:#F4F1EA;--lilac:#B9A9E3;--mono:"DejaVu Sans Mono","Courier New",monospace;--sans:"Trebuchet MS","DejaVu Sans",Verdana,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--navy);font-family:var(--sans);font-size:14px}
+button,input,select,textarea{font:inherit;color:inherit}
+#splash{position:fixed;inset:0;background:var(--navy);color:var(--cream);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;cursor:pointer;text-align:center;gap:12px}
+#splash h1{font-size:44px;margin:0;letter-spacing:-1px}#splash .disc{width:120px;height:120px;border-radius:50%;background:var(--red);border:6px solid var(--cream);box-shadow:6px 6px 0 var(--sun);animation:spin 6s linear infinite;position:relative}
+#splash .disc:after{content:"";position:absolute;inset:44px;border-radius:50%;background:var(--cream)}@keyframes spin{to{transform:rotate(360deg)}}
+#splash small{font-family:var(--mono);opacity:.8}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:14px 24px;border-bottom:4px solid var(--navy);background:#fff}
+header h1{font-size:22px;margin:0;letter-spacing:-.5px}header .tag{font-family:var(--mono);font-size:11px;color:var(--blue)}
+main{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:18px;padding:18px 24px;max-width:1700px;margin:0 auto}
+@media(max-width:1100px){main{grid-template-columns:1fr}}
+.card{background:#fff;border:3px solid var(--navy);border-radius:14px;box-shadow:6px 6px 0 var(--navy);padding:16px;margin-bottom:18px}
+.card h2{font-size:15px;margin:0 0 10px;display:flex;align-items:center;gap:8px;text-transform:uppercase;letter-spacing:.5px}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:6px 0}.grow{flex:1}
+.mono{font-family:var(--mono);font-size:11px;color:var(--blue)}.hint{font-family:var(--mono);font-size:10px;color:var(--blue);margin:4px 0}
+.btn{border:2px solid var(--navy);border-radius:8px;padding:8px 12px;font-weight:900;font-size:12px;background:#fff;cursor:pointer;box-shadow:2px 2px 0 var(--navy);display:inline-flex;align-items:center;gap:6px;transition:transform .12s,background-color .12s}
+.btn:hover{transform:translate(-1px,-1px)}.btn:active{transform:translate(1px,1px);box-shadow:none}.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.btn.primary{background:var(--sun)}.btn.red{background:var(--red);color:#fff}.btn.teal{background:var(--teal);color:#fff}.btn.navy{background:var(--navy);color:#fff}.btn.sm{padding:4px 8px;font-size:11px}
+.btn.on{background:var(--navy);color:#fff}
+.big{width:100%;justify-content:center;padding:14px;font-size:15px}
+input[type=text],input[type=number],textarea,select{border:2px solid var(--navy);border-radius:8px;padding:6px 8px;font-family:var(--mono);font-size:13px;background:#fff;width:100%}
+input[type=range]{accent-color:var(--red);width:100%}
+label.f{display:block;font-family:var(--mono);font-size:11px;margin:8px 0 2px}
+.seg{display:inline-flex;border:2px solid var(--navy);border-radius:8px;overflow:hidden}.seg button{border:0;background:#fff;padding:5px 10px;font-weight:800;font-size:11px;cursor:pointer}.seg button.on{background:var(--navy);color:#fff}
+.val{font-family:var(--mono);font-size:12px;font-weight:700;margin-left:auto}
+#grid{width:100%;display:block;border:2px solid var(--navy);border-radius:8px;background:#fff;cursor:crosshair;touch-action:none}
+#viewer{height:560px;border:2px solid var(--navy);border-radius:10px;background:var(--cream);position:relative;overflow:hidden}#viewer canvas{display:block}
+.toggle{position:relative;display:inline-block;width:38px;height:22px}.toggle input{opacity:0;width:0;height:0}.toggle i{position:absolute;inset:0;background:#ccc;border:2px solid var(--navy);border-radius:22px;transition:background .15s}.toggle i:before{content:"";position:absolute;width:14px;height:14px;left:2px;top:2px;background:#fff;border-radius:50%;transition:transform .15s}.toggle input:checked+i{background:var(--teal)}.toggle input:checked+i:before{transform:translateX(16px)}
+.tracks{max-height:220px;overflow:auto;border:2px dashed var(--navy);border-radius:8px;padding:6px;font-family:var(--mono);font-size:11px}.tracks label{display:flex;gap:6px;align-items:center;padding:2px 0}
+.conf{display:inline-block;min-width:34px;text-align:center;border-radius:4px;padding:0 4px;font-weight:700;color:#fff;background:var(--blue)}.conf.hi{background:var(--teal)}.conf.lo{background:var(--red)}
+.shelf{display:flex;flex-wrap:wrap;gap:8px}.rec{width:58px;height:58px;border-radius:50%;border:3px solid var(--navy);background:var(--red);color:#fff;font-family:var(--mono);font-weight:900;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:2px 2px 0 var(--navy);position:relative;transition:transform .15s,opacity .3s}.rec:hover{transform:translateY(-2px)}.rec.dim{opacity:.2;filter:grayscale(1)}.rec.open{outline:4px solid var(--teal)}.rec small{position:absolute;bottom:-16px;left:0;right:0;text-align:center;font-size:9px;color:var(--navy);font-weight:900}
+.shelfwrap{display:flex;flex-wrap:wrap;gap:12px 8px;padding-bottom:16px}
+.pill{display:inline-flex;align-items:center;gap:4px;border:2px solid var(--navy);border-radius:6px;padding:2px 6px;font-family:var(--mono);font-size:11px;background:#fff;cursor:pointer;border-left-width:6px}
+.status{font-family:var(--mono);font-size:11px;padding:6px 8px;border:2px dashed var(--navy);border-radius:8px;background:var(--cream)}
+.ok{color:var(--teal);font-weight:900}.bad{color:var(--red);font-weight:900}
+.toast{position:fixed;right:18px;bottom:18px;background:var(--navy);color:#fff;padding:10px 14px;border-radius:10px;font-family:var(--mono);font-size:12px;box-shadow:4px 4px 0 var(--sun);z-index:40;max-width:360px;animation:pop .2s}@keyframes pop{from{transform:translateY(10px);opacity:0}}
+.toast.err{background:var(--red)}
+details summary{cursor:pointer;font-weight:900;font-size:13px}
+footer{padding:20px 24px;font-family:var(--mono);font-size:11px;color:var(--blue);text-align:center;border-top:3px solid var(--navy);background:#fff}
+.hidden{display:none!important}
+.fontbtn{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1}.fontbtn canvas{width:100%;aspect-ratio:1;border-radius:50%;background:var(--lilac)}
+.progress{height:10px;border:2px solid var(--navy);border-radius:6px;overflow:hidden;background:#fff}.progress i{display:block;height:100%;background:var(--teal);transition:width .3s}
+.legend{display:flex;gap:10px;font-family:var(--mono);font-size:10px;flex-wrap:wrap}.legend b{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-right:3px}
+</style>
+</head>
+<body>
+<div id="splash" data-testid="splash"><div class="disc"></div><h1>Fisher-Price Record Maker</h1><div>Dedicated To My Fiancée Barbara</div><small>Russ Campbell · CopyRight 2026 · click to start</small></div>
+<header>
+  <h1>FISHER-PRICE RECORD MAKER</h1><span class="tag">MIDI → 86-beat disc → STL · SCAD · FPR · runs entirely in your browser</span>
+  <span class="grow"></span><span id="sound" class="row" data-testid="sound-check"></span>
+</header>
+<div id="busy" class="toast hidden" data-testid="busy"></div>
+<main>
+  <section>
+    <div class="card">
+      <h2>3 · Note editor <span id="side-seg" class="seg hidden" style="margin-left:8px"><button class="on" data-side="a" data-testid="side-a">SIDE A</button><button data-side="b" data-testid="side-b">SIDE B</button></span><span class="val" id="count" data-testid="note-count"></span></h2>
+      <canvas id="grid" data-testid="note-grid" height="300"></canvas>
+      <div class="legend" style="margin-top:6px"><span><b style="background:#1D3557"></b>pin</span><span><b style="background:#E63946"></b>needs attention</span><span style="color:#2A9D8F">teal pitch = twin tines (fast repeats OK)</span><span>click = toggle · shift-click = hear the tine</span></div>
+      <div class="row" style="margin-top:10px">
+        <button id="play" class="btn red" data-testid="play-button">▶ PLAY</button>
+        <button id="review-btn" class="btn" data-testid="review-button">REVIEW AS THE TOY (8 kHz WAV)</button>
+        <a id="review-dl" class="btn sm hidden" data-testid="review-download">⬇ WAV</a>
+        <button id="clear" class="btn sm" data-testid="clear-button">CLEAR SIDE</button>
+        <span class="grow"></span>
+        <button id="press" class="btn primary big" style="width:auto" data-testid="press-button">⬤ CUT THE RECORD</button>
+      </div>
+      <audio id="review" controls class="hidden" style="width:100%;margin-top:8px" data-testid="review-audio"></audio>
+    </div>
+    <div class="card">
+      <h2>4 · Your record</h2>
+      <div id="result" data-testid="result"></div>
+      <div id="viewer" data-testid="record-3d-viewer" style="margin-top:10px"></div>
+      <div class="hint">drag to rotate · scroll to zoom · READ LABEL looks straight down at the title arc, record number and the Barbara dedication ring</div>
+    </div>
+    <div class="card">
+      <h2>Album · whole song on several discs</h2>
+      <div class="row"><button id="album-plan" class="btn" data-testid="album-plan">PLAN THE ALBUM FROM THIS MIDI</button></div>
+      <div id="album" data-testid="album-panel"></div>
+    </div>
+    <div class="card">
+      <h2>Record shelf</h2>
+      <div id="shelf" data-testid="record-shelf"></div>
+      <input type="file" id="restore-file" accept=".zip" class="hidden">
+    </div>
+  </section>
+  <aside>
+    <div class="card">
+      <h2>1 · Load MIDI</h2>
+      <input type="file" id="file" accept=".mid,.midi" data-testid="midi-file">
+      <div class="hint">or drop a .mid anywhere on the page</div>
+      <div id="midi-info" class="mono" data-testid="midi-info"></div>
+      <label class="f">Title (side A)</label><input type="text" id="title" data-testid="title-input" placeholder="e.g. Twinkle Twinkle">
+      <div id="sideb-wrap" class="hidden"><label class="f">Title (side B)</label><input type="text" id="titleb" data-testid="title-b-input"></div>
+      <label class="f">Window start <span id="start-val" class="val">0.0s</span></label><input type="range" id="start" min="0" max="60" step="0.5" value="0" data-testid="start-slider">
+      <div id="fit-info" class="hint" data-testid="fit-info"></div>
+      <details style="margin-top:8px"><summary>Tracks · melody confidence</summary><div id="tracks" class="tracks" data-testid="track-picker"></div></details>
+      <details style="margin-top:8px"><summary>Factory tunes library</summary><div id="library" data-testid="library"></div></details>
+      <div class="row" style="margin-top:10px"><button id="testdisc" class="btn" data-testid="testdisc-button">PRESS A CHORD TEST DISC (1·2·3 NOTES)</button></div>
+      <div id="testnotes" class="status" style="margin-top:8px" data-testid="test-disc-notes"></div>
+    </div>
+    <div class="card">
+      <h2>2 · Settings</h2>
+      <div id="settings" data-testid="settings-panel"></div>
+    </div>
+    <div class="card">
+      <h2>Print guide</h2>
+      <ul class="mono" style="padding-left:16px;line-height:1.6">
+        <li>Print flat, label side up, 0.2 mm layers or finer, 3+ walls.</li>
+        <li>Enable Arachne / variable line width so pin tips are not dropped.</li>
+        <li>Clean stringing and seams off the pins before the first play.</li>
+        <li>Grooves are 1.2 mm deep; pins are triangle ramps on the groove walls.</li>
+        <li>Records, settings and albums are saved in this browser — use BACKUP to keep a copy.</li>
+      </ul>
+    </div>
+  </aside>
+</main>
+<footer>Fisher-Price Record Maker · HTML5 / CSS3 / JavaScript edition — no install, no server · Dedicated To My Fiancée Barbara · Copyright 2026 Russ Campbell. All rights reserved.<br>3D engine (manifold-3d), fonts and three.js load from the internet the first time; everything else runs offline.</footer>
+<script>// ===== core.js — comb, MIDI parsing, grid mapping (port of backend/fisher_price.py) =====
+const FP = (() => {
+  const R_STOCK = 60.58, O_DRIVE = 21.8, R_DRIVE = 1.55, H_INSET = 1.0, R_INSET = 25.6, H_GROOVE = 1.2, OVERLAP = 0.2;
+  const R_CENTER = 3.22, HEAD_OFFSET = 2.0, R_PIN = 0.9, PIN_BASE_RATIO = 2.0, PIN_BASE_MAX = 1.9, PIN_SINK = 0.5;
+  const GROOVE_INNERS = [28.15, 30.89, 33.71, 36.425, 39.225, 42, 44.825, 47.555, 50.315, 53.11, 55.9];
+  const FACTORY_TRACKS = [67, 72, 74, 76, 79, 81, 83, 84, 84, 86, 86, 88, 88, 89, 89, 91, 91, 93, 93, 95, 96, 98];
+  const TRACK_RADIUS = [28.65, 29.65, 31.39, 32.39, 34.21, 35.21, 36.925, 37.925, 39.725, 40.725, 42.5, 43.5, 45.325, 46.325, 48.055, 49.055, 50.815, 51.815, 53.61, 54.61, 56.4, 57.4];
+  const MAX_BEAT = 86, TRACKS_COUNT = 22, MIN_PIN_ARC_MM = 2.0, LEAN_BEATS = 4, TEMPO_PENALTY = 12, DRUM_CHANNEL = 9;
+  const REAL_PITCH_OFFSET = -4, RENDER_RATE = 8000;
+  const DEDICATION = "Dedicated To My Fiancée Barbara", DED_R = 12.0, DED_H = 2.4, DED_ARC = 240, DED_CENTRE = 0;
+  const LABEL_R = 16.3, LABEL_MAX_H = 4.6, LABEL_MAX_ARC = 300, ARC_CENTRE = Math.PI, MARK_R = 8.5, MARK_H = 4.0, H_TEXT = 0.6;
+  const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const SEMI = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const noteName = (m) => `${NAMES[m % 12]}${Math.floor(m / 12) - 1}`;
+  const noteToMidi = (s) => { const m = /^([A-Ga-g])([#b♯♭]?)(-?\d)$/.exec(String(s).trim()); if (!m) return null; const acc = m[2] === "#" || m[2] === "♯" ? 1 : m[2] ? -1 : 0; return (Number(m[3]) + 1) * 12 + SEMI[m[1].toUpperCase()] + acc; };
+  const pinBase = (d) => Math.round(Math.min(PIN_BASE_MAX, PIN_BASE_RATIO * d) * 1000) / 1000;
+
+  class Comb {
+    constructor(tracks) {
+      if (tracks.length !== TRACKS_COUNT) throw new Error("a comb has 22 tines");
+      this.tracks = tracks.map(Number);
+      this.notes = [...new Set(this.tracks)].sort((a, b) => a - b);
+      this.tines = this.notes.map((n) => this.tracks.map((t, i) => (t === n ? i : -1)).filter((i) => i >= 0));
+      this.twins = new Set(this.tines.map((g, i) => (g.length > 1 ? i : -1)).filter((i) => i >= 0));
+    }
+    get tones() { return this.notes.length; }
+    get factory() { return this.tracks.join() === FACTORY_TRACKS.join(); }
+  }
+  const DEFAULT_COMB = new Comb(FACTORY_TRACKS);
+
+  // ---------- Standard MIDI file parser ----------
+  function parseMidi(buf) {
+    const d = new DataView(buf), u8 = new Uint8Array(buf);
+    let p = 0;
+    const str = (n) => { let s = ""; for (let i = 0; i < n; i++) s += String.fromCharCode(u8[p + i]); p += n; return s; };
+    const u32 = () => { const v = d.getUint32(p); p += 4; return v; };
+    const u16 = () => { const v = d.getUint16(p); p += 2; return v; };
+    const vlq = () => { let v = 0, b; do { b = u8[p++]; v = (v << 7) | (b & 0x7f); } while (b & 0x80); return v; };
+    if (str(4) !== "MThd") throw new Error("Not a MIDI file");
+    const hlen = u32(); const fmt = u16(), ntr = u16(), div = u16(); p += hlen - 6;
+    const tracks = [];
+    for (let t = 0; t < ntr && p < u8.length; t++) {
+      if (str(4) !== "MTrk") break;
+      const len = u32(), end = p + len; let tick = 0, status = 0; const ev = []; let name = "", program = null, channels = new Set();
+      while (p < end) {
+        tick += vlq(); let b = u8[p];
+        if (b === 0xff) { p++; const type = u8[p++]; const l = vlq(); const s = p; p += l;
+          if (type === 0x51) ev.push({ tick, tempo: (u8[s] << 16) | (u8[s + 1] << 8) | u8[s + 2] });
+          else if (type === 0x03 && !name) name = String.fromCharCode(...u8.slice(s, p));
+          continue; }
+        if (b === 0xf0 || b === 0xf7) { p++; p += vlq(); continue; }
+        if (b & 0x80) { status = b; p++; }
+        const hi = status & 0xf0, ch = status & 0x0f;
+        if (hi === 0x90 || hi === 0x80) { const n = u8[p++], v = u8[p++]; if (hi === 0x90 && v > 0) { ev.push({ tick, note: n, ch }); channels.add(ch); } }
+        else if (hi === 0xc0) { program = u8[p++]; if (program !== null) channels.add(ch); }
+        else if (hi === 0xd0) p += 1; else p += 2;
+      }
+      p = end; tracks.push({ ev, name, program, channels });
+    }
+    const tempos = tracks.flatMap((t) => t.ev.filter((e) => e.tempo)).sort((a, b) => a.tick - b.tick);
+    if (!tempos.length || tempos[0].tick > 0) tempos.unshift({ tick: 0, tempo: 500000 });
+    const toSec = (tick) => { let s = 0, lt = 0, tempo = tempos[0].tempo; for (const te of tempos) { if (te.tick > tick) break; s += ((te.tick - lt) * tempo) / div / 1e6; lt = te.tick; tempo = te.tempo; } return s + ((tick - lt) * tempo) / div / 1e6; };
+    const all = []; let length = 0;
+    tracks.forEach((tr, ti) => tr.ev.forEach((e) => { if (e.note !== undefined) { const t = toSec(e.tick); all.push([t, e.note, e.ch, ti]); if (t > length) length = t; } }));
+    all.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    return { tracks, events: all, length: length + 1 };
+  }
+  const GM = "Grand Piano,Bright Piano,Electric Grand,Honky-tonk Piano,Electric Piano 1,Electric Piano 2,Harpsichord,Clavinet,Celesta,Glockenspiel,Music Box,Vibraphone,Marimba,Xylophone,Tubular Bells,Dulcimer,Drawbar Organ,Percussive Organ,Rock Organ,Church Organ,Reed Organ,Accordion,Harmonica,Tango Accordion,Nylon Guitar,Steel Guitar,Jazz Guitar,Clean Guitar,Muted Guitar,Overdriven Guitar,Distortion Guitar,Guitar Harmonics,Acoustic Bass,Finger Bass,Pick Bass,Fretless Bass,Slap Bass 1,Slap Bass 2,Synth Bass 1,Synth Bass 2,Violin,Viola,Cello,Contrabass,Tremolo Strings,Pizzicato Strings,Harp,Timpani,String Ensemble 1,String Ensemble 2,Synth Strings 1,Synth Strings 2,Choir Aahs,Voice Oohs,Synth Voice,Orchestra Hit,Trumpet,Trombone,Tuba,Muted Trumpet,French Horn,Brass Section,Synth Brass 1,Synth Brass 2,Soprano Sax,Alto Sax,Tenor Sax,Baritone Sax,Oboe,English Horn,Bassoon,Clarinet,Piccolo,Flute,Recorder,Pan Flute,Blown Bottle,Shakuhachi,Whistle,Ocarina,Square Lead,Sawtooth Lead,Calliope Lead,Chiff Lead,Charang Lead,Voice Lead,Fifths Lead,Bass + Lead,New Age Pad,Warm Pad,Polysynth Pad,Choir Pad,Bowed Pad,Metallic Pad,Halo Pad,Sweep Pad,Rain,Soundtrack,Crystal,Atmosphere,Brightness,Goblins,Echoes,Sci-Fi,Sitar,Banjo,Shamisen,Koto,Kalimba,Bagpipe,Fiddle,Shanai,Tinkle Bell,Agogo,Steel Drums,Woodblock,Taiko Drum,Melodic Tom,Synth Drum,Reverse Cymbal,Guitar Fret Noise,Breath Noise,Seashore,Bird Tweet,Telephone,Helicopter,Applause,Gunshot".split(",");
+
+  // track summaries + melody confidence (how melody-like each track is)
+  function scanTracks(mid) {
+    const out = [];
+    mid.tracks.forEach((tr, ti) => {
+      const notes = mid.events.filter((e) => e[3] === ti && e[2] !== DRUM_CHANNEL);
+      const drums = mid.events.some((e) => e[3] === ti && e[2] === DRUM_CHANNEL);
+      if (!notes.length) return;
+      const pitches = notes.map((e) => e[1]);
+      const mean = pitches.reduce((a, b) => a + b, 0) / pitches.length;
+      const times = new Map(); notes.forEach((e) => { const k = Math.round(e[0] * 20); times.set(k, (times.get(k) || 0) + 1); });
+      const poly = [...times.values()].filter((c) => c > 1).length / times.size;
+      const span = Math.max(...pitches) - Math.min(...pitches);
+      const dur = notes[notes.length - 1][0] - notes[0][0] || 1;
+      const density = notes.length / dur;
+      let conf = 50 + Math.max(-25, Math.min(25, (mean - 60) * 1.2)) - poly * 40 - (span > 30 ? 10 : 0) - (density > 8 ? 15 : density < 0.5 ? 10 : 0);
+      if (/melod|lead|vocal|voice|tune|sing/i.test(tr.name)) conf += 15;
+      if (/bass|drum|perc|pad|chord|accomp|rhythm/i.test(tr.name)) conf -= 20;
+      out.push({ index: ti, name: tr.name || `Track ${ti + 1}`, instrument: tr.program !== null ? GM[tr.program] || "" : "", notes: notes.length, mean: Math.round(mean), range: [noteName(Math.min(...pitches)), noteName(Math.max(...pitches))], poly: Math.round(poly * 100), drums, confidence: Math.max(1, Math.min(99, Math.round(conf))) });
+    });
+    out.sort((a, b) => b.confidence - a.confidence);
+    return out;
+  }
+  function skyline(events, bucket = 0.05) { const m = new Map(); for (const [t, n] of events) { const k = Math.round(t / bucket); if (!m.has(k) || m.get(k)[1] < n) m.set(k, [t, n]); } return [...m.values()].sort((a, b) => a[0] - b[0]); }
+  function midiEvents(mid, duration, start = 0, tracks = null, sky = false) {
+    const sel = tracks && tracks.length ? new Set(tracks) : null;
+    let ev = mid.events.filter((e) => e[2] !== DRUM_CHANNEL && e[0] >= start && e[0] < start + duration && (!sel || sel.has(e[3]))).map((e) => [e[0] - start, e[1]]);
+    if (sky && ev.length) ev = skyline(ev);
+    return ev;
+  }
+
+  // ---------- transposition ----------
+  function chooseTransposition(notes, comb = DEFAULT_COMB, tol = 0.15) {
+    const allowed = new Set(comb.notes), lo = comb.notes[0], hi = comb.notes[comb.notes.length - 1], n = notes.length;
+    if (!n) return 0;
+    const fit = (o) => { let ex = 0, dist = 0; for (const x of notes) { if (allowed.has(x + o)) ex++; dist += Math.min(...comb.notes.map((a) => Math.abs(x + o - a))); } return [ex, dist]; };
+    if (fit(0)[0] >= n * (1 - tol)) return 0;
+    let best = null;
+    const gt = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i]; return false; };
+    for (let o = -36; o <= 36; o++) { const avg = notes.reduce((a, b) => a + b, 0) / n + o; if (avg < lo - 6 || avg > hi + 6) continue; const [ex, dist] = fit(o); const sc = [ex, o % 12 === 0 ? 1 : 0, -Math.abs(o), -dist]; if (!best || gt(sc, best[0])) best = [sc, o]; }
+    if (!best) return 0;
+    for (const o of [-12, 12, -24, 24]) if (fit(o)[0] >= best[0][0] - Math.max(1, Math.floor(n * tol))) return o;
+    return best[1];
+  }
+  function transpositionCandidates(notes, comb = DEFAULT_COMB, k = 4) {
+    if (!notes.length) return [0];
+    const allowed = new Set(comb.notes), lo = comb.notes[0], hi = comb.notes[comb.notes.length - 1];
+    const scored = [];
+    for (let o = -36; o <= 36; o++) { let ex = 0, inside = 0; for (const n of notes) { if (allowed.has(n + o)) ex++; if (n + o >= lo && n + o <= hi) inside++; } scored.push([ex + 0.5 * inside, o % 12 === 0 ? 1 : 0, -Math.abs(o), o]); }
+    scored.sort((a, b) => b[0] - a[0] || b[1] - a[1] || b[2] - a[2] || b[3] - a[3]);
+    const out = [chooseTransposition(notes, comb)];
+    for (const s of scored) { if (!out.includes(s[3])) out.push(s[3]); if (out.length >= k) break; }
+    return out;
+  }
+  const snapNote = (m, comb) => comb.notes.reduce((b, a) => (Math.abs(a - m) < Math.abs(b - m) ? a : b));
+
+  // ---------- placement rules ----------
+  function gapBeats(tone, comb, beats) { const r = Math.min(...comb.tines[tone].map((t) => TRACK_RADIUS[t])); const gap = Math.max(1, Math.ceil(MIN_PIN_ARC_MM / ((2 * Math.PI * r) / beats))); return comb.tines[tone].length === 1 ? Math.max(gap, 2) : gap; }
+  function canPlace(p, tone, b, comb, mono = true) {
+    const beats = p[0].length;
+    if (mono && p.some((row) => row[b])) return false;
+    if (!mono && p[tone][b]) return false;
+    const row = p[tone], g = gapBeats(tone, comb, beats);
+    for (let d = 1; d < g; d++) if (row[(b - d + beats) % beats] || row[(b + d) % beats]) return false;
+    return true;
+  }
+  function nearestFree(p, tone, b, comb, mono = true, reach = 8) { const beats = p[0].length; for (let d = 1; d <= reach; d++) for (const nb of [b + d, b - d]) if (nb >= 0 && nb < beats && canPlace(p, tone, nb, comb, mono)) return nb; return null; }
+  function slide(p, tone, b, comb, prefer, mono = true) {
+    const beats = p[0].length; p[tone][b] = false;
+    const c = []; for (let d = 1; d < LEAN_BEATS; d++) c.push(b + prefer * d);
+    for (let d = LEAN_BEATS; d < beats; d++) c.push(b + prefer * d, b - prefer * d);
+    for (let d = 1; d < LEAN_BEATS; d++) c.push(b - prefer * d);
+    for (const nb of c) if (nb >= 0 && nb < beats && canPlace(p, tone, nb, comb, mono)) { p[tone][nb] = true; return true; }
+    return false;
+  }
+  function limitVoices(p, voices, comb, roll = "before", reach = 4) {
+    const beats = p[0].length, prefer = roll === "after" ? 1 : -1, load = []; for (let b = 0; b < beats; b++) load.push(p.reduce((s, r) => s + (r[b] ? 1 : 0), 0));
+    let moved = 0, dropped = 0;
+    for (let b = 0; b < beats; b++) {
+      const hits = []; p.forEach((r, t) => { if (r[b]) hits.push(t); });
+      if (hits.length <= voices) continue;
+      const keep = new Set([hits[hits.length - 1]].concat(voices >= 2 ? [hits[0]] : []));
+      const mid = (hits[0] + hits[hits.length - 1]) / 2;
+      hits.slice(1, -1).sort((x, y) => Math.abs(x - mid) - Math.abs(y - mid)).slice(0, Math.max(0, voices - 2)).forEach((t) => keep.add(t));
+      for (const t of hits) { if (keep.has(t)) continue; p[t][b] = false; load[b]--; let placed = false;
+        for (let d = 1; d <= reach && !placed; d++) for (const nb of [b + prefer * d, b - prefer * d]) if (nb >= 0 && nb < beats && load[nb] < voices && canPlace(p, t, nb, comb, false)) { p[t][nb] = true; load[nb]++; placed = true; break; }
+        if (placed) moved++; else dropped++; }
+    }
+    return [moved, dropped];
+  }
+  function staggerPartition(p, comb, roll = "before") { const beats = p[0].length, prefer = roll === "after" ? 1 : -1; let moved = 0; for (let b = 0; b < beats; b++) { const hits = []; p.forEach((r, t) => { if (r[b]) hits.push(t); }); for (const t of hits.slice(0, -1)) { slide(p, t, b, comb, prefer); moved++; } } return moved; }
+  function makePlayable(p, comb) { let slid = 0, dropped = 0; const beats = p[0].length; for (let tone = 0; tone < p.length; tone++) { const row = p[tone], gap = gapBeats(tone, comb, beats); if (gap < 2) continue; for (let b = 0; b < beats; b++) { let clash = false; for (let d = 1; d < gap; d++) if (row[(b - d + beats) % beats]) clash = true; if (row[b] && clash) { if (slide(p, tone, b, comb, 1)) slid++; else dropped++; } } } return [slid, dropped]; }
+
+  function eventsToRecord(events, duration, autoTranspose = true, manualOffset = 0, comb = DEFAULT_COMB, stagger = true, roll = "before", voices = 16) {
+    const p = comb.notes.map(() => Array(MAX_BEAT).fill(false));
+    const raw = events.map((e) => e[1]);
+    const offset = raw.length ? (autoTranspose ? chooseTransposition(raw, comb) : manualOffset) : 0;
+    let exact = 0, adjusted = 0, merged = 0, staggered = 0; const used = new Set();
+    for (const [t, n] of [...events].sort((a, b) => a[0] - b[0] || a[1] - b[1])) {
+      const m = n + offset, on = comb.notes.includes(m), snapped = on ? m : snapNote(m, comb);
+      if (on) exact++; else adjusted++;
+      const tone = comb.notes.indexOf(snapped);
+      let beat = Math.max(0, Math.min(MAX_BEAT - 1, duration > 0 ? Math.round((t / duration) * MAX_BEAT) : 0));
+      if (p[tone][beat]) { const nb = nearestFree(p, tone, beat, comb, stagger); if (nb === null) { merged++; continue; } beat = nb; staggered++; }
+      p[tone][beat] = true; used.add(snapped);
+    }
+    const partitionMidi = p.map((r) => [...r]);
+    let dropped = 0;
+    if (stagger) staggered += staggerPartition(p, comb, roll); else { const [mv, dr] = limitVoices(p, voices, comb, roll); staggered += mv; dropped = dr; }
+    const [slid, dr2] = makePlayable(p, comb); dropped += dr2; staggered += slid;
+    return { partition: p, partitionMidi, dropped, offset, exact, adjusted, merged, staggered, notesUsed: [...used].sort((a, b) => a - b), noteCount: events.length };
+  }
+
+  // ---------- fit scoring + tempo auto-fit ----------
+  function compareFit(events, offset, p, duration, revSeconds, comb) {
+    if (!events.length) return { score: 0, matched: 0, timingMs: 0, tempo: duration / revSeconds };
+    const bs = duration / MAX_BEAT; let matched = 0, err = 0;
+    for (const [t, n] of events) { const m = n + offset, tone = comb.notes.indexOf(comb.notes.includes(m) ? m : snapNote(m, comb)); const b = Math.max(0, Math.min(MAX_BEAT - 1, Math.round(t / bs))); let hit = -1; for (let d = 0; d <= 2 && hit < 0; d++) for (const nb of [b + d, b - d]) if (nb >= 0 && nb < MAX_BEAT && p[tone][nb]) { hit = nb; break; } if (hit >= 0) { matched++; err += Math.abs(hit * bs - t); } }
+    const score = Math.max(0, 100 * (matched / events.length) - 0.3 * ((err / Math.max(1, matched)) / bs) * 100 / 3 - TEMPO_PENALTY * Math.abs(duration / revSeconds - 1));
+    return { score: Math.round(score * 10) / 10, matched, timingMs: Math.round((err / Math.max(1, matched)) * 1000), tempo: Math.round((duration / revSeconds) * 1000) / 1000 };
+  }
+  function autoFit(mid, start, revSeconds, comb, roll, autoTranspose, manualOffset, tracks, sky, chords, voices, maxTries = 1500) {
+    const tempoRange = 0.35, nudge = 0.5, dLo = revSeconds * (1 - tempoRange), dHi = revSeconds * (1 + tempoRange), base = Math.max(0, start - nudge);
+    const all = midiEvents(mid, dHi + 2 * nudge, base, tracks, sky);
+    if (!all.length) { const rec = eventsToRecord([], revSeconds, autoTranspose, manualOffset, comb, true, roll); rec.events = []; rec.fit = { score: 0, tries: 0, duration: revSeconds, start, tempo: 1, matched: 0, timingMs: 0, offset: 0 }; return rec; }
+    const notes = all.map((e) => e[1]);
+    const offsets = autoTranspose ? transpositionCandidates(notes, comb) : [manualOffset];
+    const offset = offsets[0];
+    const tones = notes.map((n) => { const m = n + offset; return comb.notes.indexOf(comb.notes.includes(m) ? m : snapNote(m, comb)); });
+    const single = comb.notes.map((_, t) => comb.tines[t].length === 1);
+    const quick = (delta, dur) => { const bs = dur / MAX_BEAT; const keys = new Set(); const perBeat = new Map(); let n = 0, err = 0; const list = [];
+      for (let i = 0; i < all.length; i++) { const tt = all[i][0] - delta; if (tt < 0 || tt >= dur) continue; n++; const b = Math.max(0, Math.min(MAX_BEAT - 1, Math.round(tt / bs))); err += Math.abs(b * bs - tt) / bs; const k = tones[i] * MAX_BEAT + b; if (!keys.has(k)) { keys.add(k); list.push(k); perBeat.set(b, (perBeat.get(b) || 0) + 1); } }
+      if (!n) return -1; const merged = n - keys.size; let ch = 0; perBeat.forEach((c) => { ch += c - 1; }); list.sort((a, b) => a - b); let rep = 0; for (let i = 1; i < list.length; i++) { const kt = Math.floor(list[i] / MAX_BEAT), kb = list[i] % MAX_BEAT, pt = Math.floor(list[i - 1] / MAX_BEAT), pb = list[i - 1] % MAX_BEAT; if (kt === pt && kb - pb === 1 && single[kt]) rep++; }
+      return 100 * (1 - (0.5 * (merged + ch + rep)) / n - 0.3 * (err / n)) - TEMPO_PENALTY * Math.abs(dur / revSeconds - 1); };
+    const deltas = []; for (let d = 0; d <= 2 * nudge + 1e-9; d += 0.05) deltas.push(d);
+    const refine = Math.min(60, Math.max(10, Math.floor(maxTries / 10)));
+    const nDur = Math.max(1, Math.floor((maxTries - 2 * refine - 4) / deltas.length));
+    const durs = []; for (let i = 0; i < nDur; i++) durs.push(dLo + ((dHi - dLo) * i) / Math.max(1, nDur - 1));
+    const coarse = []; for (const d of deltas) for (const u of durs) coarse.push([quick(d, u), d, u]);
+    coarse.sort((a, b) => b[0] - a[0]); let tries = coarse.length;
+    const full = (delta, dur, off = offset) => { const ev = all.filter((e) => e[0] - delta >= 0 && e[0] - delta < dur).map((e) => [e[0] - delta, e[1]]); const rec = eventsToRecord(ev, dur, false, off, comb, !chords, roll, voices); const fit = compareFit(ev, off, rec.partition, dur, revSeconds, comb); return [fit.score, delta, dur, rec, fit, ev]; };
+    let best = null;
+    for (const [, d, u] of coarse.slice(0, refine)) { const c = full(d, u); tries++; if (!best || c[0] > best[0]) best = c; if (best[0] >= 99.5) break; }
+    if (best[0] < 99.5) { const [, d0, u0] = best; for (let dd = -0.05; dd <= 0.051; dd += 0.01) for (let du = -0.1; du <= 0.101; du += 0.02) { const d = d0 + dd, u = u0 + du; if (d >= 0 && d <= 2 * nudge && u >= dLo && u <= dHi) { const c = full(d, u); tries++; if (c[0] > best[0]) best = c; } } }
+    for (const off of offsets.slice(1)) { const c = full(best[1], best[2], off); tries++; if (c[0] > best[0]) best = c; }
+    const [, delta, dur, rec, fit, ev] = best;
+    rec.events = ev.sort((a, b) => a[0] - b[0]);
+    rec.fit = { ...fit, tries, duration: Math.round(dur * 100) / 100, start: Math.round((base + delta) * 100) / 100, offset: rec.offset };
+    return rec;
+  }
+  function analyze(mid, duration, start, autoTranspose, manualOffset, comb, roll, tracks, sky, chords, voices) {
+    const ev = midiEvents(mid, duration, start, tracks, sky);
+    const rec = eventsToRecord(ev, duration, autoTranspose, manualOffset, comb, !chords, roll, voices);
+    rec.events = ev; rec.duration = duration; rec.start = start; rec.notesUsedNames = rec.notesUsed.map(noteName);
+    return rec;
+  }
+  function planSong(mid, comb, tracks, sky, duration, revSeconds, roll, autoTranspose, manualOffset, chords, voices) {
+    const all = midiEvents(mid, 36000, 0, tracks, sky);
+    if (!all.length) throw new Error("No playable notes in the selected tracks");
+    const first = all[0][0], last = all[all.length - 1][0];
+    let start = Math.max(0, first - 0.2), fit = null;
+    if (duration <= 0) { const rec = autoFit(mid, start, revSeconds, comb, roll, autoTranspose, manualOffset, tracks, sky, chords, voices); fit = rec.fit; duration = fit.duration; start = fit.start; }
+    const offset = autoTranspose ? (fit ? fit.offset : chooseTransposition(all.map((e) => e[1]), comb)) : manualOffset;
+    const n = Math.max(1, Math.ceil((last - start + 0.01) / duration));
+    const sides = []; for (let k = 0; k < n; k++) sides.push(analyze(mid, duration, start + k * duration, false, offset, comb, roll, tracks, sky, chords, voices));
+    return { sides, duration, start, offset, fit, noteCount: sides.reduce((s, x) => s + x.noteCount, 0) };
+  }
+
+  // ---------- physical layout ----------
+  function toPhysical(p, comb, overrides = {}) {
+    const beats = p[0].length, part22 = Array.from({ length: TRACKS_COUNT }, () => Array(beats).fill(false));
+    comb.tines.forEach((tracks, tone) => { const row = p[tone]; if (tracks.length === 1) { part22[tracks[0]] = [...row]; return; } let onSecond = false;
+      row.forEach((on, i) => { if (!on) return; let slot = overrides[`${tone}-${i}`]; if (slot === undefined || slot === null) slot = onSecond ? 1 : 0; slot = Number(slot) % tracks.length; part22[tracks[slot]][i] = true; onSecond = slot === 0; }); });
+    return part22;
+  }
+  function getPins(part22) { const pins = [], beats = part22[0].length, na = (2 * Math.PI) / beats; for (let tr = 0; tr < TRACKS_COUNT; tr++) { const r = TRACK_RADIUS[tr], wall = tr % 2 === 0 ? r - 0.5 : r + 0.5, dir = tr % 2 === 0 ? 1 : -1; for (let b = 0; b < beats; b++) if (part22[tr][b]) pins.push({ wall, angle: na * b - HEAD_OFFSET / r, dir }); } return pins; }
+
+  function chordTestPartition(comb = DEFAULT_COMB) {
+    const p = comb.notes.map(() => Array(MAX_BEAT).fill(false)); const melody = [3, 4, 5, 3, 2, 1], h2 = [[1], [2], [3], [1], [0], [0]], h3 = [[1, 0], [2, 0], [3, 1], [1, 0], [0, 1], [0, 3]];
+    for (const [sec, extra] of [[2, null], [30, h2], [58, h3]]) melody.forEach((tone, i) => { const b = sec + i * 2; p[tone][b] = true; if (extra) extra[i].forEach((t) => { p[t][b] = true; }); });
+    return p;
+  }
+  const LIBRARY = [
+    ["Twinkle Twinkle Little Star", "C5 C5 G5 G5 A5 A5 G5:2 F5 F5 E5 E5 D5 D5 C5:2 G5 G5 F5 F5 E5 E5 D5:2 G5 G5 F5 F5 E5 E5 D5:2 C5 C5 G5 G5 A5 A5 G5:2 F5 F5 E5 E5 D5 D5 C5:2"],
+    ["Au Clair de la Lune", "C5 C5 C5 D5 E5:2 D5:2 C5 E5 D5 D5 C5:4 C5 C5 C5 D5 E5:2 D5:2 C5 E5 D5 D5 C5:4 D5 D5 D5 D5 A4:2 A4:2 D5 C5 B4 A4 G4:4"],
+    ["Humpty Dumpty", "E5 G5 G5 E5 C5 D5 E5:2 F5 A5 A5 F5 D5 E5 F5:2 G5 G5 G5 E5 C5 D5 E5:2 F5 F5 F5 D5 B4 C5 D5:2 E5 F5 G5 A5 G5 F5 E5:2 D5 E5 F5 G5 F5 E5 D5:2 E5 F5 G5 A5 G5 F5 E5 D5 C5:3"],
+    ["Jack and Jill", "G5 G5 A5 A5 B5 B5 C6:2 B5 B5 A5 A5 G5:3 G5 G5 A5 A5 B5 B5 C6:2 B5 B5 A5 A5 G5:3 D5 D5 E5 F5 G5 G5 A5:2 B5 B5 A5 G5 A5:3 G5 G5 A5 B5 C6 C6 B5 A5 G5:3"],
+    ["Oh Where Has My Little Dog Gone", "G5:2 E5 C5:2 E5 G5:3 G5:2 E5 C5:2 E5 G5:3 A5 A5 A5 G5:2 F5 E5 E5 E5 D5:3 G5:2 E5 C5:2 E5 G5:3 A5:2 B5 C6:2 B5 A5 G5 F5 E5 D5 C5:3"],
+    ["London Bridge", "G5 A5 G5 F5 E5 F5 G5:2 D5 E5 F5:2 E5 F5 G5:2 G5 A5 G5 F5 E5 F5 G5:2 D5:2 G5:2 E5 C5:3"],
+    ["Edelweiss", "E5 G5 D6:3 C6 G5 F5:3 E5 E5 E5 F5 G5 A5:3 G5:3 E5 G5 D6:3 C6 G5 F5:3 E5 G5 G5 A5 B5 C6:3 C6:3 D6 G5 G5 B5 A5 G5 E5 G5 C6:3 A5 D6 C6 D6:3 B5 D6:3 E5 G5 D6:3 C6 G5 F5:3 E5 G5 G5 A5 B5 C6:3 C6:3"],
+    ["Children's Prayer", "E5 D5 C5 D5 E5 E5 E5:2 D5 D5 D5:2 E5 G5 G5:2 E5 D5 C5 D5 E5 E5 E5 E5 D5 D5 E5 D5 C5:3 G5 G5 F5 D5 E5 E5 E5:2 G5 G5 F5 D5 E5 E5 E5:2 E5 D5 C5 D5 E5 E5 E5 E5 D5 D5 E5 D5 C5:3"],
+    ["Camptown Races", "G5 G5 E5 G5 A5 G5 E5:2 E5 D5:3 E5 D5:3 G5 G5 E5 G5 A5 G5 E5:2 D5 E5 D5 C5:3 C5 E5 G5:3 A5 C6 A5 G5:3 G5 G5 E5 G5 A5 G5 E5:2 D5 E5 D5 C5:3"],
+    ["Hickory Dickory Dock", "E5 D5 C5 E5 D5 C5:2 G5 A5 G5 F5 E5 D5:2 E5 F5 G5 A5 B5 C6:2 B5 A5 G5 F5 E5 D5 C5:3 E5 D5 C5 E5 D5 C5:2 G5 A5 G5 F5 E5 D5 C5:3"],
+  ];
+  function melodyEvents(melody, duration) { const steps = melody.split(/\s+/).map((tok) => { const [name, len] = tok.split(":"); return [noteToMidi(name), Number(len || 1)]; }); const total = steps.reduce((s, x) => s + x[1], 0), k = (duration * 0.96) / total; let t = 0; return steps.map(([m, l]) => { const e = [t * k, m]; t += l; return e; }); }
+  const toFpr = (p, title) => p.map((r) => r.map((x) => (x ? "+" : "-")).join("")).join("\n") + "\n" + (title || "Untitled") + "\n";
+
+  return { R_STOCK, O_DRIVE, R_DRIVE, H_INSET, R_INSET, H_GROOVE, OVERLAP, R_CENTER, HEAD_OFFSET, R_PIN, PIN_SINK, pinBase, GROOVE_INNERS, FACTORY_TRACKS, TRACK_RADIUS, MAX_BEAT, TRACKS_COUNT, REAL_PITCH_OFFSET, RENDER_RATE,
+    DEDICATION, DED_R, DED_H, DED_ARC, DED_CENTRE, LABEL_R, LABEL_MAX_H, LABEL_MAX_ARC, ARC_CENTRE, MARK_R, MARK_H, H_TEXT, noteName, noteToMidi, Comb, DEFAULT_COMB,
+    parseMidi, scanTracks, midiEvents, chooseTransposition, transpositionCandidates, eventsToRecord, compareFit, autoFit, analyze, planSong, toPhysical, getPins, chordTestPartition, LIBRARY, melodyEvents, toFpr, canPlace, gapBeats };
+})();
+
+// ===== geom.js — disc mesh via manifold-3d (WASM), raised lettering via opentype.js, STL / SCAD / label card =====
+const GEOM = (() => {
+  const C = FP;
+  let M = null, fontsP = null;
+  const FONT_URLS = {
+    bold: ["https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/DejaVuSans-Bold.ttf", "DejaVu Sans:style=Bold", 0],
+    rounded: ["https://raw.githubusercontent.com/google/fonts/main/ofl/comfortaa/Comfortaa%5Bwght%5D.ttf", "Comfortaa:style=Bold", 0.12],
+    script: ["https://raw.githubusercontent.com/google/fonts/main/ofl/pacifico/Pacifico-Regular.ttf", "Pacifico", 0.08],
+  };
+  async function ready(onStatus = () => {}) {
+    if (!M) { onStatus("loading 3D engine…"); const mod = await import("https://cdn.jsdelivr.net/npm/manifold-3d@3.4.1/manifold.js"); M = await mod.default(); M.setup(); }
+    if (!fontsP) fontsP = (async () => { onStatus("loading fonts…"); const out = {}; for (const [k, [url]] of Object.entries(FONT_URLS)) { try { out[k] = window.opentype.parse(await (await fetch(url)).arrayBuffer()); } catch (e) { console.warn("font", k, e); } } if (!out.bold) throw new Error("Could not load the label font (internet needed once)"); return out; })();
+    return { M, fonts: await fontsP };
+  }
+
+  // ---- 2D text outlines -> polygons (array of rings, each [[x,y],…]) ----
+  function textPolys(font, text, size = 10) {
+    const path = font.getPath(text, 0, 0, size), rings = []; let cur = [];
+    const flat = (p) => { if (cur.length > 2) rings.push(cur); cur = []; };
+    let x0 = 0, y0 = 0;
+    for (const c of path.commands) {
+      if (c.type === "M") { flat(); cur.push([c.x, -c.y]); x0 = c.x; y0 = c.y; }
+      else if (c.type === "L") { cur.push([c.x, -c.y]); x0 = c.x; y0 = c.y; }
+      else if (c.type === "Q" || c.type === "C") { const n = 6; for (let i = 1; i <= n; i++) { const t = i / n, mt = 1 - t; let x, y; if (c.type === "Q") { x = mt * mt * x0 + 2 * mt * t * c.x1 + t * t * c.x; y = mt * mt * y0 + 2 * mt * t * c.y1 + t * t * c.y; } else { x = mt ** 3 * x0 + 3 * mt * mt * t * c.x1 + 3 * mt * t * t * c.x2 + t ** 3 * c.x; y = mt ** 3 * y0 + 3 * mt * mt * t * c.y1 + 3 * mt * t * t * c.y2 + t ** 3 * c.y; } cur.push([x, -y]); } x0 = c.x; y0 = c.y; }
+      else if (c.type === "Z") flat();
+    }
+    flat();
+    return rings.filter((r) => Math.abs(area(r)) > 1e-6);
+  }
+  const area = (r) => { let a = 0; for (let i = 0; i < r.length; i++) { const [x1, y1] = r[i], [x2, y2] = r[(i + 1) % r.length]; a += x1 * y2 - x2 * y1; } return a / 2; };
+  const bounds = (rings) => { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const r of rings) for (const [x, y] of r) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0 }; };
+  // flat, scaled, centred text (CrossSection) — fits height h and arc length; thin fonts get emboldened
+  function textShape(font, text, r, h, arcDeg, fat = 0) {
+    const rings = textPolys(font, text); if (!rings.length) return null;
+    const b = bounds(rings), s = Math.min(h / Math.max(b.h, 1e-6), ((arcDeg * Math.PI) / 180) * r / Math.max(b.w, 1e-6));
+    const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+    const scaled = rings.map((ring) => ring.map(([x, y]) => [(x - cx) * s, (y - cy) * s]));
+    let cs = new M.CrossSection(scaled, "EvenOdd");
+    if (fat) cs = cs.offset(fat, "Round");
+    return cs;
+  }
+  const segmentize = (ring, step) => { const out = []; for (let i = 0; i < ring.length; i++) { const [x1, y1] = ring[i], [x2, y2] = ring[(i + 1) % ring.length]; const n = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / step)); for (let k = 0; k < n; k++) out.push([x1 + ((x2 - x1) * k) / n, y1 + ((y2 - y1) * k) / n]); } return out; };
+  // wrap x -> angle, y -> radius around the label arc (centre angle, tops outward, reads clockwise)
+  function bend(cs, r, centre) { const polys = cs.toPolygons(); const warped = polys.map((ring) => segmentize(ring, 0.25).map(([x, y]) => { const th = centre - x / r; return [(r + y) * Math.cos(th), (r + y) * Math.sin(th)]; })); return new M.CrossSection(warped, "EvenOdd"); }
+  function place(cs, angleDeg, radius) { return cs.translate([0, radius]).rotate(angleDeg - 90); }
+
+  function textSolids(fonts, title, H, number, dedication, dedHeight, dedFont) {
+    const shapes = [];
+    if (title && title.trim()) { const t = textShape(fonts.bold, title.trim(), C.LABEL_R, C.LABEL_MAX_H, C.LABEL_MAX_ARC); if (t) shapes.push(bend(t, C.LABEL_R, C.ARC_CENTRE)); }
+    if (dedication) { const f = fonts[dedFont] || fonts.bold, fat = FONT_URLS[fonts[dedFont] ? dedFont : "bold"][2]; const d = textShape(f, dedication, C.DED_R, dedHeight, C.DED_ARC, fat); if (d) shapes.push(bend(d, C.DED_R, (C.DED_CENTRE * Math.PI) / 180)); }
+    if (number) { const num = textShape(fonts.bold, String(number), C.MARK_R, C.MARK_H, 120); if (num) shapes.push(place(num, 180, C.MARK_R)); shapes.push(place(M.CrossSection.square([3, 0.8], true), 0, C.MARK_R)); }
+    return shapes.filter((s) => s.area() > 0.05).map((s) => M.Manifold.extrude(s, C.H_TEXT + C.OVERLAP).translate([0, 0, H - C.H_INSET - C.OVERLAP]));
+  }
+  function pinSolids(partition, H, comb, overrides, depth) {
+    const pins = C.getPins(C.toPhysical(partition, comb, overrides)), half = C.pinBase(depth) / 2, z0 = H - C.H_GROOVE - C.OVERLAP;
+    const cam = (d) => M.Manifold.extrude(new M.CrossSection([[[-d * C.PIN_SINK, -half], [-d * C.PIN_SINK, half], [0, half], [d * depth, 0], [0, -half]]]), C.H_GROOVE + C.OVERLAP);
+    const cams = { 1: cam(1), [-1]: cam(-1) };
+    return pins.map((p) => cams[p.dir].translate([p.wall, 0, z0]).rotate([0, 0, (p.angle * 180) / Math.PI]));
+  }
+  const flip = (m, H) => m.rotate([180, 0, 0]).translate([0, 0, H]);
+  function grooves(H) { const gz = H - C.H_GROOVE / 2 + 0.2; return C.GROOVE_INNERS.map((inner) => M.Manifold.cylinder(C.H_GROOVE + 0.4, inner + 2, inner + 2, 200, true).subtract(M.Manifold.cylinder(C.H_GROOVE + 0.6, inner, inner, 200, true)).translate([0, 0, gz])); }
+
+  function buildMesh(o) {
+    const { partition, thickness: H, title = "", partitionB = null, titleB = "", marks = true, recordNo = 6, comb = C.DEFAULT_COMB, overrides = {}, overridesB = {}, pinRadius = C.R_PIN, dedHeight = C.DED_H, dedB = true, dedFont = "bold", fonts } = o;
+    const cyl = (r, h, zc) => M.Manifold.cylinder(h, r, r, 160, true).translate([0, 0, zc]);
+    let disc = cyl(C.R_STOCK, H, H / 2);
+    const cuts = [cyl(C.R_CENTER, H + 1, H / 2)];
+    for (const [dx, dy] of [[0, C.O_DRIVE], [0, -C.O_DRIVE], [C.O_DRIVE, 0], [-C.O_DRIVE, 0]]) cuts.push(cyl(C.R_DRIVE, H + 1, H / 2).translate([dx, dy, 0]));
+    cuts.push(cyl(C.R_INSET, C.H_INSET + 0.4, H - C.H_INSET / 2 + 0.2), cyl(C.R_INSET, C.H_INSET + 0.4, C.H_INSET / 2 - 0.2));
+    cuts.push(...grooves(H));
+    if (partitionB) cuts.push(...grooves(H).map((g) => flip(g, H)));
+    disc = disc.subtract(M.Manifold.union(cuts));
+    let adds = pinSolids(partition, H, comb, overrides, pinRadius);
+    let pinCount = adds.length;
+    adds.push(...textSolids(fonts, title, H, marks ? recordNo : 0, C.DEDICATION, dedHeight, dedFont));
+    if (partitionB) { const b = pinSolids(partitionB, H, comb, overridesB, pinRadius); pinCount += b.length; b.push(...textSolids(fonts, titleB, H, marks ? recordNo : 0, dedB ? C.DEDICATION : "", dedHeight, dedFont)); adds.push(...b.map((m) => flip(m, H))); }
+    if (adds.length) disc = disc.add(M.Manifold.union(adds));
+    const mesh = disc.getMesh();
+    const props = mesh.numProp, verts = mesh.vertProperties, tris = mesh.triVerts;
+    const pos = new Float32Array(tris.length * 3);
+    for (let i = 0; i < tris.length; i++) { const v = tris[i] * props; pos[i * 3] = verts[v]; pos[i * 3 + 1] = verts[v + 1]; pos[i * 3 + 2] = verts[v + 2]; }
+    const check = { ok: disc.status() === "NoError" && disc.genus() >= 0, volume: Math.round(disc.volume()), triangles: tris.length / 3, status: disc.status() };
+    disc.delete();
+    return { positions: pos, pinCount, check };
+  }
+  function toSTL(positions, name = "fisher-price-record") {
+    const n = positions.length / 9, buf = new ArrayBuffer(84 + n * 50), dv = new DataView(buf);
+    const head = `Fisher-Price Record Maker — ${name} — (c) 2026 Russ Campbell`.slice(0, 79); for (let i = 0; i < head.length; i++) dv.setUint8(i, head.charCodeAt(i) & 0x7f);
+    dv.setUint32(80, n, true); let o = 84;
+    for (let t = 0; t < n; t++) { const i = t * 9; const ax = positions[i + 3] - positions[i], ay = positions[i + 4] - positions[i + 1], az = positions[i + 5] - positions[i + 2], bx = positions[i + 6] - positions[i], by = positions[i + 7] - positions[i + 1], bz = positions[i + 8] - positions[i + 2];
+      let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx; const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
+      dv.setFloat32(o, nx, true); dv.setFloat32(o + 4, ny, true); dv.setFloat32(o + 8, nz, true); o += 12;
+      for (let k = 0; k < 9; k++) { dv.setFloat32(o, positions[i + k], true); o += 4; } dv.setUint16(o, 0, true); o += 2; }
+    return new Blob([buf], { type: "model/stl" });
+  }
+
+  // ---- per-character glyph placements for OpenSCAD ----
+  function labelGlyphs(font, text, r, h, arcDeg, centreDeg) {
+    text = (text || "").trim(); if (!text) return [];
+    const full = bounds(textPolys(font, text)), s = Math.min(h / Math.max(full.h, 1e-6), ((arcDeg * Math.PI) / 180) * r / Math.max(full.w, 1e-6)), xc = (full.x0 + full.x1) / 2;
+    const out = []; let prev = 0;
+    for (let i = 0; i < text.length; i++) { const ch = text[i]; const ext = bounds(textPolys(font, text.slice(0, i + 1))); if (/\s/.test(ch)) { prev = ext.x1; continue; } const xm = i ? (prev + ext.x1) / 2 : (ext.x0 + ext.x1) / 2; prev = ext.x1; out.push([ch, Math.round((centreDeg - ((xm - xc) * s) / r * 180 / Math.PI) * 100) / 100, Math.round(10 * s * 1000) / 1000]); }
+    return out;
+  }
+  const scadStr = (s) => (s || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  function toSCAD(o) {
+    const { partition, thickness, title = "", partitionB = null, titleB = "", marks = true, recordNo = 6, comb = C.DEFAULT_COMB, overrides = {}, overridesB = {}, pinRadius = C.R_PIN, dedHeight = C.DED_H, dedB = true, dedFont = "bold", fonts } = o;
+    const pinLines = (p, side, ov) => C.getPins(C.toPhysical(p, comb, ov)).map((q) => `\t\tpin(${Math.round(q.wall * 1000) / 1000},${Math.round((q.angle * 180) / Math.PI * 1000) / 1000},${q.dir},${side});`);
+    const notes = pinLines(partition, "false", overrides); if (partitionB) { notes.push("\t\t// Side B"); notes.push(...pinLines(partitionB, "true", overridesB)); }
+    const f = fonts[dedFont] || fonts.bold;
+    const ded = (side) => labelGlyphs(f, C.DEDICATION, C.DED_R, dedHeight, C.DED_ARC, C.DED_CENTRE).map(([ch, a, s]) => `\t\tmark("${scadStr(ch)}",${a},dedR,${s},${side},dedFont);`);
+    const labels = labelGlyphs(fonts.bold, title, C.LABEL_R, C.LABEL_MAX_H, C.LABEL_MAX_ARC, 180).map(([ch, a, s]) => `\t\tglyph("${scadStr(ch)}",${a},${s},false);`).concat(ded("false"));
+    if (marks) labels.push(`\t\tmark("${recordNo}",180,markR,3.2,false);`, "\t\tdash(false);");
+    if (partitionB) { labels.push(...labelGlyphs(fonts.bold, titleB, C.LABEL_R, C.LABEL_MAX_H, C.LABEL_MAX_ARC, 180).map(([ch, a, s]) => `\t\tglyph("${scadStr(ch)}",${a},${s},true);`)); if (dedB) labels.push(...ded("true")); if (marks) labels.push(`\t\tmark("${recordNo}",180,markR,3.2,true);`, "\t\tdash(true);"); }
+    return `/* Generated by Fisher-Price Record Maker (HTML5 edition) on ${new Date().toLocaleString()}
+ * Printable disc for the vintage Fisher-Price Music Box Record Player. Based on "Fred's Fisher Price record creator" template.
+ * ${C.DEDICATION} — Copyright 2026 Russ Campbell
+ * Side A: ${scadStr(title)}
+ * Side B: ${partitionB ? scadStr(titleB) : ""}
+ */
+
+$fn = 100;
+hStock = ${thickness};
+rStock = 60.58;
+oDrive = 21.8;
+rDrive = 1.55;
+hInset = 1;
+rInset = 25.6;
+hGroove = 1.2;
+overlap = 0.2;
+twoSided = ${partitionB ? "true" : "false"};
+labelA = "${scadStr(title)}";
+labelB = "${partitionB ? scadStr(titleB) : ""}";
+labelR = 16.3;
+dedR = ${C.DED_R};       // "${scadStr(C.DEDICATION)}" — small arc inside the title
+dedFont = "${FONT_URLS[fonts[dedFont] ? dedFont : "bold"][1]}";
+markR = 8.5;
+hText = 0.6;
+pinDepth = ${pinRadius};
+pinBase = ${C.pinBase(pinRadius)};
+pinSink = ${C.PIN_SINK};
+
+module createDisc() {
+\tunion() {
+\t\tcreateBlank();
+\t\t// Curved label text (dynamically generated)
+${labels.join("\n")}
+\t\t// Notes (dynamically generated)
+${notes.join("\n")}
+\t}
+}
+
+module createBlank() {
+\tdifference() {
+\t\tcylinder(h=hStock, r=rStock);
+\t\ttranslate(v=[0,0,hStock-hInset+overlap]) { cylinder(h=hInset+overlap, r=rInset); }
+\t\ttranslate(v=[0,0,-overlap]) { cylinder(h=hInset+overlap, r=rInset); }
+\t\tcylinder(h=hStock, r=3.22);
+\t\ttranslate(v=[0,oDrive,0]) { cylinder(h=hStock, r=rDrive); }
+\t\ttranslate(v=[0,-oDrive,0]) { cylinder(h=hStock, r=rDrive); }
+\t\ttranslate(v=[oDrive,0,0]) { cylinder(h=hStock, r=rDrive); }
+\t\ttranslate(v=[-oDrive,0,0]) { cylinder(h=hStock, r=rDrive); }
+\t\ttracks(false);
+\t\tif (twoSided) tracks(true);
+\t}
+}
+module onSide(onSecondSide) { if (onSecondSide) { translate(v=[0,0,hStock]) rotate(a=[180,0,0]) children(); } else { children(); } }
+module tracks(onSecondSide) { onSide(onSecondSide) { track(28.15); track(30.89); track(33.71); track(36.425); track(39.225); track(42); track(44.825); track(47.555); track(50.315); track(53.11); track(55.9); } }
+module track(inner) { translate(v=[0,0,hStock-hGroove]) { difference() { cylinder(h=hGroove+overlap, r=inner+2); cylinder(h=hGroove+overlap, r=inner); } } }
+module glyph(ch, angle, size, onSecondSide) { mark(ch, angle, labelR, size, onSecondSide); }
+module mark(ch, angle, r, size, onSecondSide, font="DejaVu Sans:style=Bold") {
+\tonSide(onSecondSide) rotate(a=angle-90) translate(v=[0, r, hStock-hInset-overlap]) { linear_extrude(height=hText+overlap) { text(ch, size=size, halign="center", valign="center", font=font); } }
+}
+module dash(onSecondSide) { onSide(onSecondSide) translate(v=[markR, 0, hStock-hInset-overlap]) { linear_extrude(height=hText+overlap) { square(size=[3, 0.8], center=true); } } }
+module pin(wall, angle, dir, onSecondSide) {
+\thalf = pinBase / 2;
+\tonSide(onSecondSide) rotate(a=angle) translate(v=[wall, 0, hStock-hGroove-overlap]) { linear_extrude(height=hGroove+overlap) { polygon(points=[[-dir*pinSink, -half], [-dir*pinSink, half], [0, half], [dir*pinDepth, 0], [0, -half]]); } }
+}
+
+createDisc();
+`;
+  }
+
+  // ---- printable sleeve card (SVG, 100 x 60 mm) ----
+  const ALBUM_COLOURS = ["#E63946", "#2A9D8F", "#FFB703", "#457B9D", "#8E44AD", "#F4845F", "#1D3557", "#6A994E", "#D77A61", "#5BC0BE"];
+  function labelCard(rec, album = null) {
+    const esc = (t) => String(t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const fit = (t, size, w = 60) => ((t || "").length * size * 0.6 > w ? ` textLength="${w}" lengthAdjust="spacingAndGlyphs"` : "");
+    const notes = (rec.notesUsed || []).map(C.noteName).join(" ");
+    let badge = "", band = "";
+    if (album) { const [i, n] = album, col = ALBUM_COLOURS[(i - 1) % ALBUM_COLOURS.length];
+      badge = `<rect x="60" y="3" width="13" height="8" rx="1.5" fill="${col}"/><text x="66.5" y="8.8" font-size="4.5" font-weight="700" fill="#F4F1EA" text-anchor="middle">${i}/${n}</text><text x="66.5" y="15" font-size="2.6" fill="#457B9D" text-anchor="middle">disc ${i} of ${n}</text>`;
+      const dots = Array.from({ length: Math.min(n, 10) }, (_, k) => `<circle cx="3.5" cy="${14 + k * 4.2}" r="1.1" fill="${ALBUM_COLOURS[k % 10]}" stroke="#F4F1EA" stroke-width="${k + 1 === i ? 0.5 : 0}"/>`).join("");
+      band = `<rect x="0.5" y="0.5" width="6" height="59" rx="3" fill="${col}"/><rect x="3.5" y="0.5" width="3" height="59" fill="${col}"/>${dots}<text transform="translate(5,57) rotate(-90)" font-size="2.4" font-weight="700" fill="#F4F1EA">DISC ${i}</text>`; }
+    const uid = Math.random().toString(36).slice(2, 8);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm" viewBox="0 0 100 60" font-family="DejaVu Sans, Arial, sans-serif" fill="#1D3557">
+  <rect x="0.5" y="0.5" width="99" height="59" rx="3" fill="#F4F1EA" stroke="#1D3557" stroke-width="1"/>
+  ${band}
+  <circle cx="84" cy="14" r="9" fill="#B9A9E3" stroke="#1D3557" stroke-width="0.8"/>
+  <circle cx="84" cy="14" r="1.5" fill="#F4F1EA" stroke="#1D3557" stroke-width="0.5"/>
+  <defs><path id="ded-${uid}" d="M 73 14 A 11 11 0 1 1 95 14 A 11 11 0 1 1 73 14"/></defs>
+  <text font-size="2.1" fill="#1D3557" letter-spacing="0.15"><textPath href="#ded-${uid}" startOffset="25%" text-anchor="middle">${esc(C.DEDICATION)}</textPath></text>
+  <text x="84" y="29.5" font-size="2.8" text-anchor="middle" fill="#457B9D">RECORD</text>
+  <text x="84" y="35" font-size="5" text-anchor="middle" font-weight="700">#${rec.recordNo || "-"}</text>
+  ${badge}
+  <text x="8" y="12" font-size="2.6" fill="#457B9D" textLength="54" lengthAdjust="spacingAndGlyphs">FISHER-PRICE MUSIC BOX RECORD PLAYER</text>
+  <text x="8" y="22" font-size="4" fill="#457B9D">SIDE A</text>
+  <text x="8" y="29" font-size="6" font-weight="700"${fit(rec.title, 6)}>${esc(rec.title)}</text>
+  ${rec.twoSided ? `<text x="8" y="40" font-size="4" fill="#457B9D">SIDE B</text><text x="8" y="46" font-size="6" font-weight="700"${fit(rec.titleB, 6)}>${esc(rec.titleB)}</text>` : ""}
+  <text x="8" y="51.5" font-size="2.6" fill="#457B9D" font-style="italic">${esc(C.DEDICATION)} · © 2026 Russ Campbell</text>
+  <text x="8" y="55.5" font-size="2.8" fill="#457B9D">${rec.pinCount} pins · ${rec.thickness} mm · ${rec.duration}s window · ${esc(notes)}</text>
+</svg>
+`;
+  }
+  return { ready, buildMesh, toSTL, toSCAD, labelCard, ALBUM_COLOURS, textShape, bend };
+})();
+
+// ===== audio.js — toy-voice synth, sequence player, 8 kHz WAV render =====
+const AUDIO = (() => {
+  let ctx = null, master = null; const watchers = new Set();
+  const notify = () => watchers.forEach((f) => f());
+  const getVolume = () => { const v = Number(localStorage.getItem("fp-volume")); return localStorage.getItem("fp-volume") === null || !Number.isFinite(v) ? 0.8 : v; };
+  function engine() { if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); master = ctx.createGain(); master.gain.value = getVolume() * 1.5; master.connect(ctx.destination); ctx.onstatechange = notify; notify(); } if (ctx.state === "suspended") ctx.resume().then(notify, notify); return ctx; }
+  ["pointerdown", "keydown", "touchend"].forEach((ev) => window.addEventListener(ev, () => engine(), { passive: true, capture: true }));
+  function setVolume(v) { localStorage.setItem("fp-volume", String(v)); if (master) master.gain.setTargetAtTime(v * 1.5, ctx.currentTime, 0.02); notify(); }
+  const PARTIALS = [[1, 1.0, 1.9], [2.0, 0.45, 1.0], [3.01, 0.22, 0.55], [4.16, 0.12, 0.28]];
+  const midiToFreq = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  function pluck(dest, freq, when) {
+    const c = engine(), out = c.createGain(); out.gain.value = 0.3; out.connect(dest);
+    const ring = Math.min(1.8, Math.max(0.7, 700 / freq));
+    for (const [ratio, g, decay] of PARTIALS) { const o = c.createOscillator(); o.type = "sine"; o.frequency.value = freq * ratio; const env = c.createGain(); env.gain.setValueAtTime(0.0001, when); env.gain.linearRampToValueAtTime(g, when + 0.003); env.gain.exponentialRampToValueAtTime(0.0001, when + decay * ring); o.connect(env); env.connect(out); o.start(when); o.stop(when + decay * ring + 0.05); }
+    const noise = c.createBufferSource(), buf = c.createBuffer(1, 256, c.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < 256; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / 256); noise.buffer = buf; const ng = c.createGain(); ng.gain.value = 0.15; noise.connect(ng); ng.connect(out); noise.start(when);
+  }
+  function channel() { const c = engine(), g = c.createGain(); g.connect(master); return { ctx: c, dest: g, close() { g.gain.cancelScheduledValues(c.currentTime); g.gain.setTargetAtTime(0, c.currentTime, 0.01); setTimeout(() => g.disconnect(), 80); } }; }
+  // play one or more sides (partitions) at toy speed; onTick(sideIdx, beat) drives the playhead
+  function playSides(sides, notes, revSeconds, onTick, onEnd, startBeat = 0) {
+    const ch = channel(), t0 = ch.ctx.currentTime + 0.05, beatSec = revSeconds / FP.MAX_BEAT, gap = 0.8;
+    let cursor = 0; const schedule = [];
+    sides.forEach((p, si) => { p.forEach((row, tone) => row.forEach((on, b) => { if (!on) return; const t = cursor + b * beatSec - (si === 0 ? startBeat * beatSec : 0); if (t < 0) return; schedule.push([t, si, b]); pluck(ch.dest, midiToFreq(notes[tone] + FP.REAL_PITCH_OFFSET), t0 + t); })); cursor += revSeconds + gap - (si === 0 ? startBeat * beatSec : 0); });
+    const total = cursor + 1.0; let raf, stopped = false;
+    const tick = () => { if (stopped) return; const el = ch.ctx.currentTime - t0; if (el > total) { stop(); onEnd && onEnd(); return; } let acc = 0; for (let si = 0; si < sides.length; si++) { const len = revSeconds + gap - (si === 0 ? startBeat * beatSec : 0); if (el < acc + len) { const beat = Math.min(FP.MAX_BEAT - 1, Math.floor((el - acc) / beatSec) + (si === 0 ? startBeat : 0)); onTick(si, beat); break; } acc += len; } raf = requestAnimationFrame(tick); };
+    const stop = () => { stopped = true; cancelAnimationFrame(raf); ch.close(); };
+    tick();
+    return { stop, duration: total };
+  }
+  function tap(midi) { const ch = channel(); pluck(ch.dest, midiToFreq(midi + FP.REAL_PITCH_OFFSET), ch.ctx.currentTime + 0.01); setTimeout(() => ch.close(), 2500); }
+  function testTone() { [84, 88, 91].forEach((m, i) => setTimeout(() => tap(m), i * 230)); }
+  // whole song as the toy plays it: 8 kHz mono 16-bit WAV
+  function renderWav(sides, notes, revSeconds, rate = FP.RENDER_RATE, sideGap = 0.6) {
+    const beatSec = revSeconds / FP.MAX_BEAT, onsets = []; let cursor = 0;
+    for (const p of sides) { p.forEach((row, tone) => row.forEach((on, b) => { if (on) onsets.push([cursor + b * beatSec, notes[tone] + FP.REAL_PITCH_OFFSET]); })); cursor += revSeconds + sideGap; }
+    const total = Math.floor((cursor + 1.5) * rate), audio = new Float32Array(total), n = Math.floor(1.2 * rate);
+    const env = new Float32Array(n); for (let i = 0; i < n; i++) { const t = i / rate; env[i] = Math.exp(-t * 4.5) * (1 - Math.exp(-t * 400)); }
+    for (const [when, midi] of onsets) { const f0 = midiToFreq(midi), i0 = Math.floor(when * rate), seg = Math.min(n, total - i0); if (seg <= 0) continue;
+      for (let i = 0; i < seg; i++) { const t = i / rate; let v = 0; for (const [k, amp, dec] of [[1, 1.0, 1.0], [2.76, 0.35, 2.2], [5.4, 0.12, 3.5]]) if (f0 * k < rate / 2) v += amp * Math.sin(2 * Math.PI * f0 * k * t) * Math.exp(-t * dec * 2); audio[i0 + i] += v * env[i]; } }
+    let peak = 0; for (const v of audio) peak = Math.max(peak, Math.abs(v)); peak = peak || 1;
+    const buf = new ArrayBuffer(44 + total * 2), dv = new DataView(buf); const w = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, "RIFF"); dv.setUint32(4, 36 + total * 2, true); w(8, "WAVE"); w(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, "data"); dv.setUint32(40, total * 2, true);
+    for (let i = 0; i < total; i++) dv.setInt16(44 + i * 2, Math.round((audio[i] / peak) * 0.85 * 32767), true);
+    return new Blob([buf], { type: "audio/wav" });
+  }
+  const state = () => (ctx ? ctx.state : "idle"), sampleRate = () => (ctx ? ctx.sampleRate : 0), watch = (f) => { watchers.add(f); return () => watchers.delete(f); };
+  return { engine, playSides, tap, testTone, renderWav, getVolume, setVolume, state, sampleRate, watch };
+})();
+
+// ===== store.js — IndexedDB records/albums/settings + minimal ZIP writer (backup, print pack) =====
+const STORE = (() => {
+  const DB = "fisher-price-record-maker", VER = 1; let dbp = null;
+  function open() { if (dbp) return dbp; dbp = new Promise((res, rej) => { const r = indexedDB.open(DB, VER); r.onupgradeneeded = () => { const d = r.result; for (const s of ["records", "albums", "settings"]) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: "id" }); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); return dbp; }
+  const tx = async (store, mode, fn) => { const d = await open(); return new Promise((res, rej) => { const t = d.transaction(store, mode), s = t.objectStore(store); const out = fn(s); t.oncomplete = () => res(out && out.result !== undefined ? out.result : out); t.onerror = () => rej(t.error); }); };
+  const put = (store, doc) => tx(store, "readwrite", (s) => s.put(doc));
+  const get = (store, id) => tx(store, "readonly", (s) => s.get(id));
+  const del = (store, id) => tx(store, "readwrite", (s) => s.delete(id));
+  const all = (store) => tx(store, "readonly", (s) => s.getAll());
+  const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => { const r = (Math.random() * 16) | 0; return (c === "x" ? r : (r & 3) | 8).toString(16); }));
+  const settings = { async get(k, dflt) { const d = await get("settings", k); return d ? d.value : dflt; }, set: (k, value) => put("settings", { id: k, value }) };
+  // list without heavy blobs
+  async function records() { const rs = await all("records"); return rs.map(({ stl, scad, fpr, ...r }) => r).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")); }
+  async function nextRecordNo(title) { const rs = await records(); const start = await settings.get("numbering", 6); if (title) { const same = rs.find((r) => (r.title || "").trim().toLowerCase() === title.trim().toLowerCase()); if (same && same.recordNo) return same.recordNo; } const used = new Set(rs.map((r) => r.recordNo)); let n = start; while (used.has(n) || n <= 5) n++; return n; }
+
+  // ---- tiny ZIP writer (STORE method, CRC32) ----
+  const CRC = (() => { const t = new Uint32Array(256); for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[i] = c >>> 0; } return t; })();
+  const crc32 = (u8) => { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  async function zip(files) {
+    const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
+    const now = new Date(), dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xffff, dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xffff;
+    for (const [name, data] of files) {
+      const body = data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : typeof data === "string" ? enc.encode(data) : new Uint8Array(data);
+      const n = enc.encode(name), crc = crc32(body), lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true); lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true); lh.setUint32(18, body.length, true); lh.setUint32(22, body.length, true); lh.setUint16(26, n.length, true); lh.setUint16(28, 0, true);
+      parts.push(lh.buffer, n, body);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true); ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true); ch.setUint32(20, body.length, true); ch.setUint32(24, body.length, true); ch.setUint16(28, n.length, true); ch.setUint32(42, offset, true);
+      central.push(ch.buffer, n); offset += 30 + n.length + body.length;
+    }
+    const cdSize = central.reduce((s, b) => s + (b.byteLength || b.length), 0), end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, end.buffer], { type: "application/zip" });
+  }
+  function download(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); }
+  const safeName = (t) => (t || "record").replace(/[^A-Za-z0-9 _-]+/g, "").trim().replace(/\s+/g, "-").slice(0, 40) || "record";
+  return { put, get, del, all, uuid, settings, records, nextRecordNo, zip, download, safeName };
+})();
+
+// ===== ui.js — the app: load, settings, editor, press, 3D preview, albums, shelf, backups =====
+(() => {
+  const $ = (s) => document.querySelector(s), $$ = (s) => [...document.querySelectorAll(s)];
+  const h = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else if (k === "html") e.innerHTML = v; else e.setAttribute(k, v); } for (const k of kids.flat()) if (k !== null && k !== undefined) e.append(k.nodeType ? k : document.createTextNode(String(k))); return e; };
+  const toast = (msg, err = false) => { const t = h("div", { class: "toast" + (err ? " err" : ""), "data-testid": "toast" }, msg); document.body.append(t); setTimeout(() => t.remove(), 4200); };
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // ---------- state ----------
+  const S = { title: "", titleB: "", twoSided: false, thickness: 3.0, duration: 25, revSeconds: 25, start: 0, pinRadius: FP.R_PIN, dedHeight: FP.DED_H, dedFont: "bold", dedB: true, voices: 1, roll: "before", engrave: true, recordNo: "", autoTranspose: true, offset: 0, skyline: false, tracks: null, comb: FP.DEFAULT_COMB,
+    mid: null, midName: "", scan: [], analysis: null, analysisB: null, side: "a", playing: null, result: null, album: null, history: [], defaults: null, shelfFocus: null, shelfQ: "" };
+  const part = () => (S.side === "a" ? S.analysis : S.analysisB);
+  const setPart = (p) => { const a = part() || { partition: p, noteCount: 0, exact: 0, adjusted: 0, offset: 0, notesUsed: [] }; a.partition = p; if (S.side === "a") S.analysis = a; else S.analysisB = a; };
+
+  // ---------- splash ----------
+  function splash() { const el = $("#splash"); const go = () => { el.classList.add("hidden"); AUDIO.engine(); }; el.onclick = go; setTimeout(go, 2500); }
+
+  // ---------- sound check ----------
+  function soundCheck() {
+    const el = $("#sound"); const draw = () => { const st = AUDIO.state(), v = AUDIO.getVolume(); const blocked = st === "suspended", muted = v === 0; el.innerHTML = ""; el.append(
+      h("button", { class: "btn sm " + (blocked || muted ? "red" : "teal"), "data-testid": "sound-test-button", onclick: () => { AUDIO.engine(); AUDIO.testTone(); } }, "♪ TEST"),
+      h("span", { class: "mono", "data-testid": "sound-state", style: blocked || muted ? "color:var(--red);font-weight:900" : "" }, muted ? "MUTED" : blocked ? "SOUND BLOCKED — click anywhere" : st === "running" ? `SOUND ON · ${Math.round(AUDIO.sampleRate() / 1000)} kHz` : "SOUND READY"),
+      h("input", { type: "range", min: 0, max: 1, step: 0.05, value: v, style: "width:90px", "data-testid": "volume-slider", oninput: (e) => AUDIO.setVolume(Number(e.target.value)) }), h("span", { class: "mono" }, `${Math.round(v * 100)}%`)); };
+    AUDIO.watch(draw); draw();
+  }
+
+  // ---------- load card ----------
+  async function loadFile(file) {
+    try { S.mid = FP.parseMidi(await file.arrayBuffer()); S.midName = file.name; S.scan = FP.scanTracks(S.mid); S.tracks = null; S.start = 0; S.title = S.title || file.name.replace(/\.(mid|midi)$/i, ""); $("#title").value = S.title; renderTracks(); $("#midi-info").textContent = `${file.name} · ${S.mid.events.length} notes · ${S.mid.length.toFixed(1)} s · ${S.scan.length} pitched tracks`; $("#start").max = Math.max(0, S.mid.length - 1); await autoFit(); }
+    catch (e) { toast("Could not read that MIDI: " + e.message, true); }
+  }
+  function renderTracks() {
+    const box = $("#tracks"); box.innerHTML = "";
+    if (!S.scan.length) { box.append(h("div", { class: "hint" }, "Load a MIDI to see its tracks.")); return; }
+    const best = S.scan[0].confidence; const auto = S.scan.filter((t) => t.confidence >= best - 15 && !t.drums).map((t) => t.index);
+    if (!S.tracks) S.tracks = auto;
+    S.scan.forEach((t) => box.append(h("label", {}, h("input", { type: "checkbox", "data-testid": `track-${t.index}`, ...(S.tracks.includes(t.index) ? { checked: "" } : {}), onchange: (e) => { S.tracks = e.target.checked ? [...S.tracks, t.index] : S.tracks.filter((x) => x !== t.index); } }), h("span", { class: "conf " + (t.confidence >= 65 ? "hi" : t.confidence < 40 ? "lo" : "") }, `${t.confidence}%`), h("span", { class: "grow" }, `${t.name}${t.instrument ? " · " + t.instrument : ""}`), h("span", {}, `${t.notes} notes · ${t.range[0]}–${t.range[1]}${t.poly ? ` · ${t.poly}% chords` : ""}`))));
+    box.append(h("div", { class: "row" }, h("button", { class: "btn sm", "data-testid": "tracks-apply", onclick: autoFit }, "RE-FIT WITH THESE TRACKS"), h("label", { class: "mono" }, h("input", { type: "checkbox", onchange: (e) => { S.skyline = e.target.checked; } }), " top note only (skyline)")));
+  }
+  async function autoFit() {
+    if (!S.mid) return;
+    busy("Auto-fitting tempo & key…");
+    await new Promise((r) => setTimeout(r, 30));
+    try { const rec = FP.autoFit(S.mid, S.start, S.revSeconds, S.comb, S.roll, S.autoTranspose, S.offset, S.tracks, S.skyline, S.voices > 1, S.voices); S.analysis = rec; S.duration = rec.fit.duration; S.offset = rec.offset; S.side = "a"; S.result = null;
+      $("#fit-info").innerHTML = `fit <b>${rec.fit.score}</b>/100 · ${rec.noteCount} notes → ${rec.exact} exact · ${rec.adjusted} nudged · ${rec.staggered} rolled · ${rec.dropped} dropped · window ${rec.fit.start}s + ${rec.fit.duration}s (${Math.round((rec.fit.duration / S.revSeconds) * 100)}% tempo) · key shift ${rec.offset >= 0 ? "+" : ""}${rec.offset}`;
+      drawGrid(); showResult(null); }
+    catch (e) { toast(e.message, true); } finally { busy(null); }
+  }
+  function pickTune(i) { const [title, mel] = FP.LIBRARY[i]; const rec = FP.eventsToRecord(FP.melodyEvents(mel, S.duration), S.duration, true, 0, S.comb, S.voices <= 1, S.roll, S.voices); S.analysis = rec; S.title = title; $("#title").value = title; S.mid = null; S.scan = []; S.midName = ""; renderTracks(); $("#midi-info").textContent = `Factory tune: ${title}`; $("#fit-info").textContent = `${rec.noteCount} notes · ${rec.exact} exact · ${rec.staggered} rolled`; S.side = "a"; S.result = null; drawGrid(); showResult(null); }
+  let tunePlay = null;
+  function playTune(i) { if (tunePlay) { tunePlay.stop(); tunePlay = null; $$(".tune-play").forEach((b) => (b.textContent = "▶")); return; } const [, mel] = FP.LIBRARY[i]; const rec = FP.eventsToRecord(FP.melodyEvents(mel, S.duration), S.duration, true, 0, S.comb); const btn = $(`#tune-play-${i}`); btn.textContent = "■"; tunePlay = AUDIO.playSides([rec.partition], S.comb.notes, S.revSeconds, () => {}, () => { tunePlay = null; btn.textContent = "▶"; }); }
+
+  // ---------- settings ----------
+  function settings() {
+    const el = $("#settings"); el.innerHTML = "";
+    const slider = (label, key, min, max, step, fmt, hint, testid) => { const wrap = h("div", {}); const val = h("span", { class: "val", "data-testid": `${testid}-value` }, fmt(S[key])); const hintEl = h("div", { class: "hint" }, hint(S[key])); wrap.append(h("div", { class: "row" }, h("span", { class: "mono" }, label), val), h("input", { type: "range", min, max, step, value: S[key], "data-testid": `${testid}-slider`, oninput: (e) => { S[key] = Number(e.target.value); val.textContent = fmt(S[key]); hintEl.textContent = hint(S[key]); if (key === "dedHeight") fontPreviews(); } }), hintEl); return wrap; };
+    const seg = (key, opts, testid, after) => { const s = h("div", { class: "seg" }); const draw = () => { s.innerHTML = ""; opts.forEach(([v, l]) => s.append(h("button", { class: String(S[key]) === String(v) ? "on" : "", "data-testid": `${testid}-${v}`, onclick: () => { S[key] = v; draw(); after && after(); } }, l))); }; draw(); return s; };
+    const toggle = (key, testid, after) => h("label", { class: "toggle" }, h("input", { type: "checkbox", ...(S[key] ? { checked: "" } : {}), "data-testid": testid, onchange: (e) => { S[key] = e.target.checked; after && after(); } }), h("i"));
+    el.append(
+      h("div", { class: "row" }, h("span", { class: "mono grow" }, "Two-sided disc (Side B)"), toggle("twoSided", "two-sided-toggle", () => { $("#sideb-wrap").classList.toggle("hidden", !S.twoSided); $("#side-seg").classList.toggle("hidden", !S.twoSided); if (S.twoSided && !S.analysisB) S.analysisB = { partition: S.comb.notes.map(() => Array(FP.MAX_BEAT).fill(false)), noteCount: 0, exact: 0, adjusted: 0, offset: 0, notesUsed: [] }; settings(); })),
+      h("div", { class: "row" }, h("span", { class: "mono grow" }, "Engrave record number + dash"), toggle("engrave", "engrave-toggle")),
+      h("div", { class: "row" }, h("span", { class: "mono grow" }, "Auto key shift (tines up/down)"), toggle("autoTranspose", "auto-transpose-toggle", autoFit)),
+      slider("Toy speed: seconds per revolution", "revSeconds", 20, 32, 0.5, (v) => `${v.toFixed(1)}s`, (v) => `The toy turns one revolution in ~25 s; set it to what your player actually does (86 beats = ${(v / 86 * 1000).toFixed(0)} ms per beat).`, "rev-seconds"),
+      slider("Disc thickness", "thickness", 2.5, 6, 0.1, (v) => `${v.toFixed(1)}mm`, (v) => (v < 3 ? "Thin — flexes more, grooves are 1.2 mm deep each side." : v > 4.5 ? "Thick — may not slide under the arm on some players." : "Factory records are about 3 mm."), "thickness"),
+      slider("Pin height (triangle)", "pinRadius", 0.4, 1.2, 0.05, (v) => `${v.toFixed(2)}mm`, (v) => `Triangle ramp on the groove wall: ${FP.pinBase(v).toFixed(1)} mm base buried 0.5 mm into the wall. 0.9 is the print-tested default (0.8 felt a touch small).`, "pin-radius"),
+      slider("Dedication letters (Barbara ring)", "dedHeight", 2, 3.5, 0.1, (v) => `${v.toFixed(1)}mm`, (v) => (v < 2.5 ? "Fine lettering — crisp with a 0.25 mm nozzle." : v <= 3 ? "Good match for a 0.4 mm nozzle." : "Bold lettering — easiest to read."), "ded-height"),
+      h("div", { class: "row", id: "fontrow" }), h("div", { class: "hint" }, `“${FP.DEDICATION}” is raised on every disc. Font: BOLD = factory look · ROUNDED = soft · SCRIPT = handwritten (3 mm+ recommended).`),
+      S.twoSided ? h("div", { class: "row" }, h("span", { class: "mono grow" }, "Dedication ring on side B too"), toggle("dedB", "ded-b-toggle")) : null,
+      h("div", { class: "row" }, h("span", { class: "mono" }, "Notes at once"), seg("voices", [[1, "ONE"], [2, "TWO"], [3, "THREE"], [16, "ALL"]], "voices", () => refit()), h("span", { class: "hint" }, "ONE = factory style (notes roll). TWO/THREE = simple chords on different tines.")),
+      h("div", { class: "row" }, h("span", { class: "mono" }, "Roll direction"), seg("roll", [["before", "LEAN BEFORE"], ["after", "LEAN AFTER"]], "roll", () => refit())),
+      h("label", { class: "f" }, "Record number (blank = next free)"), h("input", { type: "number", min: 6, max: 999, "data-testid": "record-no", value: S.recordNo, oninput: (e) => { S.recordNo = e.target.value; } }),
+    );
+    fontPreviews();
+  }
+  const refit = () => { if (S.mid) autoFit(); else if (S.analysis) { const ev = S.analysis.events; if (ev && ev.length) { const rec = FP.eventsToRecord(ev, S.duration, false, S.offset, S.comb, S.voices <= 1, S.roll, S.voices); S.analysis = { ...S.analysis, ...rec }; drawGrid(); } } };
+  let fontsReady = null;
+  function fontPreviews() {
+    const row = $("#fontrow"); if (!row) return; row.innerHTML = "";
+    [["bold", "BOLD"], ["rounded", "ROUNDED"], ["script", "SCRIPT"]].forEach(([k, l]) => { const c = h("canvas", { width: 160, height: 160, "data-testid": `ded-font-preview-${k}` }); row.append(h("button", { class: "btn fontbtn" + (S.dedFont === k ? " on" : ""), "data-testid": `ded-font-${k}`, onclick: () => { S.dedFont = k; fontPreviews(); } }, c, l)); previewRing(c, k); });
+  }
+  async function previewRing(canvas, font) {
+    const g = canvas.getContext("2d"); g.clearRect(0, 0, 160, 160); g.fillStyle = "#B9A9E3"; g.beginPath(); g.arc(80, 80, 78, 0, 7); g.fill(); g.fillStyle = "#F4F1EA"; g.beginPath(); g.arc(80, 80, 12, 0, 7); g.fill();
+    try { const { fonts } = await GEOM.ready(() => {}); const f = fonts[font] || fonts.bold; const path = f.getPath(FP.DEDICATION, 0, 0, 10); const bb = path.getBoundingBox(); const w = bb.x2 - bb.x1, hh = bb.y2 - bb.y1; const s = Math.min(S.dedHeight / hh, ((FP.DED_ARC * Math.PI) / 180) * FP.DED_R / w); const k = 160 / 42; g.fillStyle = "#1D3557"; g.beginPath();
+      const warp = (x, y) => { const X = (x - (bb.x1 + bb.x2) / 2) * s, Y = -(y - (bb.y1 + bb.y2) / 2) * s; const th = -X / FP.DED_R; const r = FP.DED_R + Y; return [80 + r * Math.cos(th) * k, 80 - r * Math.sin(th) * k]; };
+      let lx = 0, ly = 0; for (const c of path.commands) { if (c.type === "M") { const [px, py] = warp(c.x, c.y); g.moveTo(px, py); lx = c.x; ly = c.y; } else if (c.type === "L") { const [px, py] = warp(c.x, c.y); g.lineTo(px, py); lx = c.x; ly = c.y; } else if (c.type === "Q" || c.type === "C") { for (let i = 1; i <= 5; i++) { const t = i / 5, mt = 1 - t; const x = c.type === "Q" ? mt * mt * lx + 2 * mt * t * c.x1 + t * t * c.x : mt ** 3 * lx + 3 * mt * mt * t * c.x1 + 3 * mt * t * t * c.x2 + t ** 3 * c.x; const y = c.type === "Q" ? mt * mt * ly + 2 * mt * t * c.y1 + t * t * c.y : mt ** 3 * ly + 3 * mt * mt * t * c.y1 + 3 * mt * t * t * c.y2 + t ** 3 * c.y; const [px, py] = warp(x, y); g.lineTo(px, py); } lx = c.x; ly = c.y; } else if (c.type === "Z") g.closePath(); }
+      g.fill("evenodd"); } catch (e) { g.fillStyle = "#1D3557"; g.font = "10px sans-serif"; g.fillText("fonts load online", 40, 84); }
+  }
+
+  // ---------- note editor (canvas) ----------
+  const grid = { cell: 0, left: 54, top: 18 };
+  function drawGrid(playBeat = -1) {
+    const c = $("#grid"), p = part(); const W = c.clientWidth || 1000; const cell = Math.floor((W - grid.left) / FP.MAX_BEAT); grid.cell = cell; const rows = S.comb.tones; c.width = grid.left + cell * FP.MAX_BEAT + 1; c.height = grid.top + cell * rows + 1;
+    const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.font = "10px monospace"; g.textBaseline = "middle";
+    const conflicts = new Set(); if (p) { for (let b = 0; b < FP.MAX_BEAT; b++) { const tones = []; p.partition.forEach((r, t) => { if (r[b]) tones.push(t); }); if (tones.length > S.voices) tones.forEach((t) => conflicts.add(`${t}-${b}`)); } p.partition.forEach((row, t) => { const gap = FP.gapBeats(t, S.comb, FP.MAX_BEAT); for (let b = 0; b < FP.MAX_BEAT; b++) if (row[b]) for (let d = 1; d < gap; d++) if (row[(b + d) % FP.MAX_BEAT]) { conflicts.add(`${t}-${b}`); conflicts.add(`${t}-${(b + d) % FP.MAX_BEAT}`); } }); }
+    for (let t = 0; t < rows; t++) { const y = grid.top + (rows - 1 - t) * cell; g.fillStyle = S.comb.twins.has(t) ? "#2A9D8F" : "#1D3557"; g.fillText(FP.noteName(S.comb.notes[t]).padStart(3), 4, y + cell / 2); g.fillStyle = "#1D3557"; g.fillText(S.comb.twins.has(t) ? "x2" : "", 30, y + cell / 2);
+      for (let b = 0; b < FP.MAX_BEAT; b++) { const x = grid.left + b * cell; g.fillStyle = b % 4 === 0 ? "#f1ede4" : "#faf8f3"; g.fillRect(x, y, cell - 1, cell - 1); if (p && p.partition[t][b]) { g.fillStyle = conflicts.has(`${t}-${b}`) ? "#E63946" : "#1D3557"; g.beginPath(); g.arc(x + cell / 2, y + cell / 2, cell * 0.38, 0, 7); g.fill(); } } }
+    g.fillStyle = "#457B9D"; for (let b = 0; b < FP.MAX_BEAT; b += 5) g.fillText(String(b), grid.left + b * cell + 2, 8);
+    if (playBeat >= 0) { g.fillStyle = "rgba(230,57,70,.25)"; g.fillRect(grid.left + playBeat * cell, grid.top, cell, cell * rows); }
+    $("#count").textContent = p ? `${p.partition.reduce((s, r) => s + r.filter(Boolean).length, 0)} pins · ${conflicts.size ? conflicts.size / 1 + " flagged (red = chord over limit or too close on one tine)" : "all playable"}` : "";
+  }
+  function gridClick(e) { const c = $("#grid"), r = c.getBoundingClientRect(); const x = (e.clientX - r.left) * (c.width / r.width), y = (e.clientY - r.top) * (c.height / r.height); const b = Math.floor((x - grid.left) / grid.cell), t = S.comb.tones - 1 - Math.floor((y - grid.top) / grid.cell); if (b < 0 || b >= FP.MAX_BEAT || t < 0 || t >= S.comb.tones) return; if (!part()) setPart(S.comb.notes.map(() => Array(FP.MAX_BEAT).fill(false))); const p = part().partition; if (e.shiftKey) { AUDIO.tap(S.comb.notes[t]); return; } p[t][b] = !p[t][b]; if (p[t][b]) AUDIO.tap(S.comb.notes[t]); S.result = null; drawGrid(); }
+  function togglePlay() { if (S.playing) { S.playing.stop(); S.playing = null; $("#play").textContent = "▶ PLAY"; drawGrid(); return; } const sides = [S.analysis && S.analysis.partition, S.twoSided && S.analysisB && S.analysisB.partition].filter(Boolean); if (!sides.length) return; $("#play").textContent = "■ STOP"; S.playing = AUDIO.playSides(sides, S.comb.notes, S.revSeconds, (si, b) => { S.side = si === 0 ? "a" : "b"; drawGrid(b); }, () => { S.playing = null; $("#play").textContent = "▶ PLAY"; drawGrid(); }); }
+  function reviewWav() { const sides = [S.analysis && S.analysis.partition, S.twoSided && S.analysisB && S.analysisB.partition].filter(Boolean); if (!sides.length) return; const blob = AUDIO.renderWav(sides, S.comb.notes, S.revSeconds); const a = $("#review"); a.src = URL.createObjectURL(blob); a.classList.remove("hidden"); $("#review-dl").href = a.src; $("#review-dl").download = `${STORE.safeName(S.title)}-toy-8kHz.wav`; $("#review-dl").classList.remove("hidden"); a.play().catch(() => {}); }
+
+  // ---------- press ----------
+  const busy = (msg) => { const b = $("#busy"); if (!msg) { b.classList.add("hidden"); return; } b.classList.remove("hidden"); b.textContent = msg; };
+  async function press(opts = {}) {
+    const p = opts.partition || (S.analysis && S.analysis.partition); if (!p) { toast("Load a tune or click some notes first", true); return null; }
+    busy("Pressing the record…");
+    try {
+      const { fonts } = await GEOM.ready(busy);
+      const title = opts.title ?? (S.title || "Untitled"), titleB = S.twoSided ? S.titleB || "Side B" : "", pb = opts.partitionB !== undefined ? opts.partitionB : S.twoSided && S.analysisB ? S.analysisB.partition : null;
+      const recordNo = opts.recordNo || Number(S.recordNo) || (await STORE.nextRecordNo(title));
+      const o = { partition: p, partitionB: pb, thickness: S.thickness, title, titleB, marks: S.engrave, recordNo, comb: S.comb, pinRadius: S.pinRadius, dedHeight: S.dedHeight, dedB: S.dedB, dedFont: S.dedFont, fonts };
+      busy("Building 3D geometry…"); await new Promise((r) => setTimeout(r, 20));
+      const mesh = GEOM.buildMesh(o);
+      const a = opts.analysis || S.analysis || {};
+      const rec = { id: STORE.uuid(), createdAt: new Date().toISOString(), title, titleB, twoSided: !!pb, recordNo, thickness: S.thickness, duration: Math.round((a.duration || S.duration) * 100) / 100, revSeconds: S.revSeconds, pinRadius: S.pinRadius, dedHeight: S.dedHeight, dedB: S.dedB, dedFont: S.dedFont, voices: S.voices, roll: S.roll, offset: a.offset || 0, exact: a.exact || 0, adjusted: a.adjusted || 0, noteCount: a.noteCount || 0, notesUsed: a.notesUsed || [], pinCount: mesh.pinCount, check: mesh.check, partition: p, partitionB: pb, albumId: opts.albumId || null, albumIndex: opts.albumIndex || null, albumCount: opts.albumCount || null, filename: S.midName,
+        stl: GEOM.toSTL(mesh.positions, title), scad: GEOM.toSCAD(o), fpr: FP.toFpr(p, title) + (pb ? "\n" + FP.toFpr(pb, titleB) : "") };
+      await STORE.put("records", rec);
+      if (!opts.silent) { S.result = rec; showResult(rec, mesh.positions); toast(`Record #${recordNo} pressed — ${mesh.pinCount} pins, ${mesh.check.ok ? "watertight" : "check mesh"}`); }
+      await loadShelf();
+      return { rec, positions: mesh.positions };
+    } catch (e) { console.error(e); toast("Pressing failed: " + e.message, true); return null; } finally { busy(null); }
+  }
+  async function testDisc() { const p = FP.chordTestPartition(S.comb); const saved = { v: S.voices }; S.voices = 3; const r = await press({ partition: p, partitionB: null, title: "CHORD TEST 1-2-3", analysis: { duration: S.revSeconds, noteCount: p.reduce((s, r) => s + r.filter(Boolean).length, 0), notesUsed: [] } }); S.voices = saved.v; if (r) toast("Test disc: beats 2–14 single notes · 30–42 two-note chords · 58–70 triads. Print it, then note which section played cleanly below."); }
+
+  // ---------- results + 3D ----------
+  let three = null;
+  async function viewer(positions) {
+    const box = $("#viewer"); box.innerHTML = ""; if (!positions) { box.append(h("div", { class: "hint", style: "padding:20px" }, "Press a record to see it here in 3D.")); return; }
+    try {
+      const THREE = await import("https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"); const { OrbitControls } = await import("https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js");
+      const W = box.clientWidth, H = box.clientHeight; const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(W, H); renderer.setPixelRatio(Math.min(2, devicePixelRatio)); box.append(renderer.domElement);
+      const scene = new THREE.Scene(); scene.background = new THREE.Color("#F4F1EA"); const cam = new THREE.PerspectiveCamera(42, W / H, 0.5, 1000); cam.position.set(0, 95, 95);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.65)); const d1 = new THREE.DirectionalLight(0xffffff, 1.15); d1.position.set(50, 90, 40); scene.add(d1); const d2 = new THREE.DirectionalLight(0xffffff, 0.4); d2.position.set(-50, 30, -40); scene.add(d2); const graze = new THREE.DirectionalLight(0xffffff, 1.6); graze.position.set(60, 12, 20); graze.visible = false; scene.add(graze);
+      const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(positions, 3)); geo.computeVertexNormals(); geo.center(); const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: "#B9A9E3", roughness: 0.55, metalness: 0.05, flatShading: true })); mesh.rotation.x = -Math.PI / 2; scene.add(mesh);
+      const controls = new OrbitControls(cam, renderer.domElement); controls.autoRotate = true; controls.autoRotateSpeed = 0.8; controls.minDistance = 12; controls.maxDistance = 240;
+      let alive = true; const loop = () => { if (!alive) return; controls.update(); renderer.render(scene, cam); requestAnimationFrame(loop); }; loop();
+      const bar = h("div", { style: "position:absolute;top:10px;right:10px", class: "seg" }); const views = { disc: [0, 95, 95], label: [0, 70, 0.01] }; let cur = "disc";
+      const drawBar = () => { bar.innerHTML = ""; for (const [k, l] of [["disc", "FULL DISC"], ["label", "READ LABEL"]]) bar.append(h("button", { class: cur === k ? "on" : "", "data-testid": `viewer-${k}`, onclick: () => { cur = k; cam.position.set(...views[k]); controls.target.set(0, 0, 0); controls.autoRotate = k === "disc"; graze.visible = k === "label"; controls.update(); drawBar(); } }, l)); };
+      drawBar(); box.append(bar);
+      if (three) three.dispose(); three = { dispose() { alive = false; renderer.dispose(); } };
+    } catch (e) { box.append(h("div", { class: "hint", style: "padding:20px" }, "3D preview needs an internet connection the first time (three.js). STL downloads still work.")); }
+  }
+  function showResult(rec, positions) {
+    const el = $("#result"); el.innerHTML = ""; if (!rec) { el.append(h("div", { class: "hint" }, "Nothing pressed yet.")); viewer(null); return; }
+    const dl = (label, blob, name, cls = "") => h("button", { class: "btn " + cls, "data-testid": `download-${label.split(" ")[0].toLowerCase()}`, onclick: () => STORE.download(blob instanceof Blob ? blob : new Blob([blob], { type: "text/plain" }), name) }, label);
+    const base = `${rec.recordNo}-${STORE.safeName(rec.title)}`;
+    el.append(h("div", { class: "status", "data-testid": "result-status" }, h("b", {}, `RECORD #${rec.recordNo} · ${rec.title}${rec.twoSided ? " / " + rec.titleB : ""}`), ` — ${rec.pinCount} pins · ${rec.thickness} mm · ${rec.check.triangles} triangles · `, h("span", { class: rec.check.ok ? "ok" : "bad" }, rec.check.ok ? "WATERTIGHT ✓" : "MESH " + rec.check.status), ` · ${Math.round(rec.stl.size / 1024)} KB`),
+      h("div", { class: "row" }, dl("STL (print this)", rec.stl, `${base}.stl`, "teal"), dl("SCAD (OpenSCAD)", rec.scad, `${base}.scad`), dl("FPR (tracker)", rec.fpr, `${base}.fpr`), dl("LABEL card (SVG)", new Blob([GEOM.labelCard(rec, rec.albumIndex ? [rec.albumIndex, rec.albumCount] : null)], { type: "image/svg+xml" }), `${base}-label.svg`),
+        h("button", { class: "btn navy", "data-testid": "download-pack", onclick: async () => STORE.download(await STORE.zip([[`${base}.stl`, rec.stl], [`${base}.scad`, rec.scad], [`${base}.fpr`, rec.fpr], [`${base}-label.svg`, GEOM.labelCard(rec)], [`${base}-README.txt`, readme(rec)]]), `${base}-print-pack.zip`) }, "PRINT PACK (.ZIP)")));
+    if (positions) viewer(positions); else { const blob = rec.stl; blob.arrayBuffer().then((buf) => { const dv = new DataView(buf), n = dv.getUint32(80, true), pos = new Float32Array(n * 9); for (let t = 0; t < n; t++) for (let k = 0; k < 9; k++) pos[t * 9 + k] = dv.getFloat32(84 + t * 50 + 12 + k * 4, true); viewer(pos); }); }
+  }
+  const readme = (rec) => `Fisher-Price Record Maker — Record #${rec.recordNo} "${rec.title}"\n${FP.DEDICATION} · © 2026 Russ Campbell\n\nPrint the STL flat, label side up, 0.2 mm layers or finer, 100% infill not needed (3+ walls). Pins are ${rec.pinRadius} mm triangles; clean stringing off them before the first play.\nSCAD = editable OpenSCAD source · FPR = tune-tracker text · label.svg = 100 x 60 mm sleeve card.\n${rec.pinCount} pins · ${rec.noteCount} notes · key shift ${rec.offset} · ${rec.duration}s window · side gap for two-sided: flip the disc.\n`;
+
+  // ---------- album ----------
+  async function planAlbum() { if (!S.mid) { toast("Load a MIDI file first", true); return; } busy("Planning the album…"); await new Promise((r) => setTimeout(r, 30)); try { S.album = FP.planSong(S.mid, S.comb, S.tracks, S.skyline, 0, S.revSeconds, S.roll, S.autoTranspose, S.offset, S.voices > 1, S.voices); drawAlbum(); } catch (e) { toast(e.message, true); } finally { busy(null); } }
+  function drawAlbum() { const el = $("#album"); el.innerHTML = ""; const a = S.album; if (!a) { el.append(h("div", { class: "hint" }, "Cut the whole MIDI into consecutive discs (one revolution each).")); return; } const n = a.sides.length, discs = S.twoSided ? Math.ceil(n / 2) : n;
+    el.append(h("div", { class: "status" }, `${a.noteCount} notes → ${n} sides → ${discs} disc${discs === 1 ? "" : "s"} · ${a.duration}s per side (${Math.round((a.duration / S.revSeconds) * 100)}% tempo) · key shift ${a.offset}`), h("div", { class: "progress" }, h("i", { id: "album-bar", style: "width:0" })),
+      h("ol", { class: "mono", id: "album-list" }, a.sides.map((s, i) => h("li", {}, `side ${i + 1}: ${s.noteCount} notes · ${s.exact} exact · ${s.staggered} rolled · ${s.dropped} dropped`))),
+      h("div", { class: "row" }, h("button", { class: "btn primary", "data-testid": "album-press", onclick: pressAlbum }, `PRESS ALL ${discs} DISCS`), h("button", { class: "btn", "data-testid": "album-play", onclick: () => { if (S.playing) { S.playing.stop(); S.playing = null; return; } S.playing = AUDIO.playSides(a.sides.map((s) => s.partition), S.comb.notes, S.revSeconds, () => {}, () => { S.playing = null; }); } }, "▶ PLAY WHOLE SONG"), h("button", { class: "btn", onclick: () => STORE.download(AUDIO.renderWav(a.sides.map((s) => s.partition), S.comb.notes, S.revSeconds), `${STORE.safeName(S.title)}-album-8kHz.wav`) }, "WAV 8 kHz")));
+  }
+  async function pressAlbum() { const a = S.album; if (!a) return; const albumId = STORE.uuid(), title = S.title || "Album", n = a.sides.length, discs = S.twoSided ? Math.ceil(n / 2) : n; const made = []; let no = Number(S.recordNo) || (await STORE.nextRecordNo(""));
+    for (let d = 0; d < discs; d++) { const sa = S.twoSided ? a.sides[d * 2] : a.sides[d], sb = S.twoSided ? a.sides[d * 2 + 1] : null; const r = await press({ partition: sa.partition, partitionB: sb ? sb.partition : null, title: `${title} ${d + 1}/${discs}`, analysis: { ...sa, duration: a.duration }, recordNo: no + d, albumId, albumIndex: d + 1, albumCount: discs, silent: true }); if (!r) return; made.push(r.rec); $("#album-bar").style.width = `${Math.round(((d + 1) / discs) * 100)}%`; }
+    await STORE.put("albums", { id: albumId, title, createdAt: new Date().toISOString(), discs: made.map((r) => ({ id: r.id, recordNo: r.recordNo, title: r.title })), duration: a.duration, offset: a.offset });
+    toast(`Album pressed: ${discs} discs, records #${no}–#${no + discs - 1}`); S.result = made[0]; showResult(made[0]); await loadShelf();
+    $("#album").append(h("div", { class: "row" }, h("button", { class: "btn teal", "data-testid": "album-zip", onclick: () => albumZip(albumId) }, "DOWNLOAD ALBUM ZIP"), h("button", { class: "btn", "data-testid": "album-sleeves", onclick: () => sleeveSheet(albumId) }, "PRINT SLEEVE SHEET")));
+  }
+  async function albumDocs(albumId) { const album = await STORE.get("albums", albumId); const docs = []; for (const d of album.discs) { const r = await STORE.get("records", d.id); if (r) docs.push(r); } return { album, docs }; }
+  async function albumZip(albumId) { const { album, docs } = await albumDocs(albumId); const files = []; const lines = [`${album.title} — ${docs.length} discs, play in this order:`]; docs.forEach((r, i) => { const stem = `${String(i + 1).padStart(2, "0")}-${r.recordNo}-${STORE.safeName(r.title)}`; files.push([`${stem}.stl`, r.stl], [`scad/${stem}.scad`, r.scad], [`fpr/${stem}.fpr`, r.fpr], [`sleeves/${stem}-label.svg`, GEOM.labelCard(r, [i + 1, docs.length])]); lines.push(`  Record #${r.recordNo}  ${stem}.stl — ${r.pinCount} pins${r.twoSided ? " (two-sided: flip to continue)" : ""}`); }); files.push(["sleeves/sleeve-sheet.html", sleeveHtml(album, docs)], ["README.txt", lines.join("\n") + `\n\n${FP.DEDICATION} · © 2026 Russ Campbell\n`]); STORE.download(await STORE.zip(files), `${STORE.safeName(album.title)}-album.zip`); }
+  const sleeveHtml = (album, docs) => { const cards = docs.map((r, i) => GEOM.labelCard(r, [i + 1, docs.length])); const pages = []; for (let p = 0; p < cards.length; p += 8) pages.push(`<div class="page">${cards.slice(p, p + 8).join("\n")}</div>`); return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(album.title)} — sleeve labels</title><style>@page{size:A4 portrait;margin:10mm}body{margin:0;font-family:Arial,sans-serif;color:#1D3557}.page{width:190mm;display:grid;grid-template-columns:1fr 1fr;gap:6mm 8mm;padding:4mm 0;page-break-after:always}svg{width:90mm;height:54mm;display:block}.bar{display:flex;gap:8px;align-items:center;margin-bottom:4mm}button{font:700 12px Arial;padding:6px 12px;border:2px solid #1D3557;background:#E9C46A;border-radius:6px;cursor:pointer}@media print{.bar{display:none}}</style></head><body><div class="bar"><h1 style="font-size:14px;margin:0">${esc(album.title)} — ${docs.length} numbered sleeve labels</h1><button onclick="window.print()">PRINT</button></div><p style="font-size:10px;color:#457B9D">Cut along the card borders (100 × 60 mm). Play order: ${docs.map((r) => "#" + r.recordNo).join(" → ")}. ${esc(FP.DEDICATION)} · © 2026 Russ Campbell</p>${pages.join("\n")}</body></html>`; };
+  async function sleeveSheet(albumId) { const { album, docs } = await albumDocs(albumId); const w = window.open("", "_blank"); if (!w) { STORE.download(new Blob([sleeveHtml(album, docs)], { type: "text/html" }), "sleeve-sheet.html"); return; } w.document.write(sleeveHtml(album, docs)); w.document.close(); }
+
+  // ---------- shelf ----------
+  async function loadShelf() { S.history = await STORE.records(); drawShelf(); }
+  function drawShelf() {
+    const el = $("#shelf"); el.innerHTML = ""; const rs = S.history, q = S.shelfQ.trim().toLowerCase(); const hit = (r) => !q || String(r.recordNo) === q.replace(/^#/, "") || `${r.title} ${r.titleB || ""}`.toLowerCase().includes(q);
+    const albums = new Map(); rs.filter((r) => r.albumId).forEach((r) => { if (!albums.has(r.albumId)) albums.set(r.albumId, []); albums.get(r.albumId).push(r); });
+    el.append(h("div", { class: "row" }, h("input", { type: "text", placeholder: "search title or #number", style: "width:220px", "data-testid": "shelf-search", value: S.shelfQ, oninput: (e) => { S.shelfQ = e.target.value; drawShelf(); } }), h("span", { class: "mono" }, `${rs.length} records pressed${q ? ` · ${rs.filter(hit).length} hits` : ""}`), h("span", { class: "grow" }), h("button", { class: "btn sm primary", "data-testid": "backup-start", onclick: backup }, "⬇ BACKUP ALL RECORDS (.ZIP)"), h("button", { class: "btn sm", "data-testid": "restore-start", onclick: () => $("#restore-file").click() }, "⬆ RESTORE")));
+    if (albums.size) { const wrap = h("div", { style: "margin:8px 0" }); for (const [id, list] of albums) { list.sort((a, b) => (a.albumIndex || 0) - (b.albumIndex || 0)); const name = list[0].title.replace(/\s+\d+\/\d+$/, ""); wrap.append(h("div", { class: "row" }, h("button", { class: "btn sm" + (S.shelfFocus === id ? " on" : ""), "data-testid": `shelf-album-${id}`, onclick: () => { S.shelfFocus = S.shelfFocus === id ? null : id; drawShelf(); } }, `ALBUM · ${name}${S.shelfFocus === id ? " ✕" : ""}`), list.map((r, i) => h("span", { class: "pill", style: `border-left-color:${GEOM.ALBUM_COLOURS[(r.albumIndex - 1) % 10]}`, onclick: () => openRecord(r.id) }, `#${r.recordNo} · ${r.albumIndex}/${r.albumCount}`)), h("button", { class: "btn sm teal", onclick: () => albumZip(id) }, "ZIP"), h("button", { class: "btn sm", onclick: () => sleeveSheet(id) }, "SLEEVES"))); } el.append(wrap); }
+    const shelf = h("div", { class: "shelfwrap" }); rs.slice().sort((a, b) => (a.recordNo || 0) - (b.recordNo || 0)).forEach((r) => { const lit = (!S.shelfFocus || r.albumId === S.shelfFocus) && hit(r); shelf.append(h("button", { class: "rec" + (lit ? "" : " dim") + (S.result && S.result.id === r.id ? " open" : ""), "data-testid": `shelf-record-${r.recordNo}`, title: `${r.title}${r.twoSided ? " / " + r.titleB : ""} — click to open`, style: r.albumId ? `background:${GEOM.ALBUM_COLOURS[((r.albumIndex || 1) - 1) % 10]}` : "", onclick: () => openRecord(r.id), oncontextmenu: async (e) => { e.preventDefault(); if (confirm(`Delete record #${r.recordNo} "${r.title}"?`)) { await STORE.del("records", r.id); loadShelf(); } } }, r.recordNo, r.albumId ? h("small", {}, `${r.albumIndex}/${r.albumCount}`) : null)); });
+    el.append(shelf, h("div", { class: "hint" }, "Click a record to open it · right-click to delete · album discs share a colour with their sleeve cards."));
+  }
+  async function openRecord(id) { const r = await STORE.get("records", id); if (!r) return; S.result = r; S.title = r.title; S.titleB = r.titleB || ""; S.twoSided = !!r.twoSided; S.thickness = r.thickness; S.pinRadius = r.pinRadius; S.dedHeight = r.dedHeight; S.dedFont = r.dedFont; S.voices = r.voices; S.roll = r.roll; S.analysis = { partition: r.partition, noteCount: r.noteCount, exact: r.exact, adjusted: r.adjusted, offset: r.offset, notesUsed: r.notesUsed, duration: r.duration }; S.analysisB = r.partitionB ? { partition: r.partitionB, noteCount: 0, exact: 0, adjusted: 0, offset: 0, notesUsed: [] } : null; S.side = "a"; $("#title").value = S.title; $("#titleb").value = S.titleB; settings(); $("#sideb-wrap").classList.toggle("hidden", !S.twoSided); $("#side-seg").classList.toggle("hidden", !S.twoSided); drawGrid(); showResult(r); drawShelf(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  async function backup() { busy("Packing every record…"); try { const rs = await STORE.all("records"), albums = await STORE.all("albums"), settings = await STORE.all("settings"); const files = [], index = []; for (const r of rs) { const stem = `${r.recordNo}-${STORE.safeName(r.title)}-${r.id.slice(0, 6)}`; const { stl, scad, fpr, ...meta } = r; files.push([`records/${stem}/${stem}.stl`, stl], [`records/${stem}/${stem}.scad`, scad], [`records/${stem}/${stem}.fpr`, fpr], [`records/${stem}/${stem}-label.svg`, GEOM.labelCard(r, r.albumIndex ? [r.albumIndex, r.albumCount] : null)], [`records/${stem}/${stem}.json`, JSON.stringify(meta, null, 1)]); index.push(`#${r.recordNo}  ${r.title}  —  records/${stem}/`); } files.push(["albums.json", JSON.stringify(albums, null, 1)], ["settings.json", JSON.stringify(settings, null, 1)], ["README.txt", `Fisher-Price Record Maker backup — ${new Date().toISOString()}\n${FP.DEDICATION} · © 2026 Russ Campbell\n${rs.length} records, ${albums.length} albums. Restore with the RESTORE button (pick this ZIP).\n\n${index.join("\n")}\n`]); STORE.download(await STORE.zip(files), `fisher-price-records-backup-${new Date().toISOString().slice(0, 10)}.zip`); toast(`Backup: ${rs.length} records`); } catch (e) { toast("Backup failed: " + e.message, true); } finally { busy(null); } }
+  // minimal ZIP reader for restore (STORE-method zips written by this app)
+  async function restore(file) { busy("Restoring…"); try { const buf = await file.arrayBuffer(), dv = new DataView(buf), u8 = new Uint8Array(buf), dec = new TextDecoder(); let p = 0, n = 0; const metas = new Map(), blobs = new Map();
+      while (p + 30 <= u8.length && dv.getUint32(p, true) === 0x04034b50) { const comp = dv.getUint16(p + 8, true), size = dv.getUint32(p + 18, true), nl = dv.getUint16(p + 26, true), xl = dv.getUint16(p + 28, true); const name = dec.decode(u8.slice(p + 30, p + 30 + nl)); const data = u8.slice(p + 30 + nl + xl, p + 30 + nl + xl + size); p += 30 + nl + xl + size; if (comp !== 0) continue; if (name.endsWith(".json") && name.startsWith("records/")) metas.set(name.replace(/\.json$/, ""), JSON.parse(dec.decode(data))); else if (name.startsWith("records/")) blobs.set(name, data); else if (name === "albums.json") for (const a of JSON.parse(dec.decode(data))) await STORE.put("albums", a); else if (name === "settings.json") for (const s of JSON.parse(dec.decode(data))) await STORE.put("settings", s); }
+      for (const [stem, meta] of metas) { const rec = { ...meta, stl: new Blob([blobs.get(`${stem}.stl`) || new Uint8Array()], { type: "model/stl" }), scad: dec.decode(blobs.get(`${stem}.scad`) || new Uint8Array()), fpr: dec.decode(blobs.get(`${stem}.fpr`) || new Uint8Array()) }; await STORE.put("records", rec); n++; }
+      toast(`Restored ${n} records`); await loadShelf(); } catch (e) { toast("Restore failed: " + e.message, true); } finally { busy(null); } }
+
+  // ---------- test-disc notes → default voices ----------
+  async function testNotes() { const el = $("#testnotes"); el.innerHTML = ""; const d = (await STORE.settings.get("defaults", null)) || {}; let pick = d.voices || null; const note = h("textarea", { rows: 2, placeholder: "e.g. two-note section rang clean, triads buzzed on the low tines", "data-testid": "test-result-note" }, d.note || ""); const segEl = h("div", { class: "seg" }); const draw = () => { segEl.innerHTML = ""; [[1, "ONE"], [2, "TWO"], [3, "THREE"]].forEach(([v, l]) => segEl.append(h("button", { class: pick === v ? "on" : "", "data-testid": `test-result-${v}`, onclick: () => { pick = v; draw(); } }, l))); }; draw();
+    el.append(h("div", { class: "mono" }, "AFTER PRINTING the chord test disc — which section played cleanly?"), h("div", { class: "row" }, segEl, h("button", { class: "btn sm teal", "data-testid": "test-result-save", onclick: async () => { if (!pick) return; await STORE.settings.set("defaults", { voices: pick, note: note.value, testedAt: new Date().toISOString() }); S.voices = pick; settings(); toast(`Default "notes at once" = ${["", "ONE", "TWO", "THREE"][pick]}`); testNotes(); } }, "SAVE AS DEFAULT")), note, d.voices ? h("div", { class: "hint", "data-testid": "test-result-saved" }, `Default: ${["", "ONE", "TWO", "THREE"][d.voices]} at once · saved ${new Date(d.testedAt).toLocaleDateString()}${d.note ? ` · “${d.note}”` : ""}`) : null); }
+
+  // ---------- boot ----------
+  async function boot() {
+    splash(); soundCheck();
+    const d = await STORE.settings.get("defaults", null); if (d && d.voices) S.voices = d.voices;
+    settings(); renderTracks(); drawGrid(); showResult(null); drawAlbum(); testNotes(); loadShelf();
+    const lib = $("#library"); FP.LIBRARY.forEach(([t], i) => lib.append(h("div", { class: "row" }, h("button", { class: "btn sm tune-play", id: `tune-play-${i}`, "data-testid": `library-play-${i}`, onclick: () => playTune(i) }, "▶"), h("button", { class: "btn sm grow", style: "justify-content:flex-start", "data-testid": `library-${i}`, onclick: () => pickTune(i) }, t))));
+    $("#file").onchange = (e) => e.target.files[0] && loadFile(e.target.files[0]);
+    document.body.addEventListener("dragover", (e) => e.preventDefault()); document.body.addEventListener("drop", (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+    $("#title").oninput = (e) => { S.title = e.target.value; }; $("#titleb").oninput = (e) => { S.titleB = e.target.value; };
+    $("#start").oninput = (e) => { S.start = Number(e.target.value); $("#start-val").textContent = `${S.start.toFixed(1)}s`; }; $("#start").onchange = autoFit;
+    $("#grid").addEventListener("pointerdown", gridClick); window.addEventListener("resize", () => drawGrid());
+    $("#play").onclick = togglePlay; $("#review-btn").onclick = reviewWav; $("#press").onclick = () => press(); $("#clear").onclick = () => { setPart(S.comb.notes.map(() => Array(FP.MAX_BEAT).fill(false))); drawGrid(); };
+    $("#testdisc").onclick = testDisc; $("#album-plan").onclick = planAlbum; $("#restore-file").onchange = (e) => e.target.files[0] && restore(e.target.files[0]);
+    $$("#side-seg button").forEach((b) => (b.onclick = () => { S.side = b.dataset.side; $$("#side-seg button").forEach((x) => x.classList.toggle("on", x === b)); drawGrid(); }));
+    GEOM.ready(() => {}).then(() => fontPreviews()).catch(() => {});
+  }
+  document.addEventListener("DOMContentLoaded", boot);
+})();
+</script>
+</body>
+</html>

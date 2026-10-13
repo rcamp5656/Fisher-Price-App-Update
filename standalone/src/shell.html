@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fisher-Price Record Maker — HTML5 edition</title>
+<!-- Dedicated To My Fiancée Barbara · Copyright 2026 Russ Campbell. All rights reserved. -->
+<script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<style>/*__CSS__*/</style>
+</head>
+<body>
+<div id="splash" data-testid="splash"><div class="disc"></div><h1>Fisher-Price Record Maker</h1><div>Dedicated To My Fiancée Barbara</div><small>Russ Campbell · CopyRight 2026 · click to start</small></div>
+<header>
+  <h1>FISHER-PRICE RECORD MAKER</h1><span class="tag">MIDI → 86-beat disc → STL · SCAD · FPR · runs entirely in your browser</span>
+  <span class="grow"></span><span id="sound" class="row" data-testid="sound-check"></span>
+</header>
+<div id="busy" class="toast hidden" data-testid="busy"></div>
+<main>
+  <section>
+    <div class="card">
+      <h2>3 · Note editor <span id="side-seg" class="seg hidden" style="margin-left:8px"><button class="on" data-side="a" data-testid="side-a">SIDE A</button><button data-side="b" data-testid="side-b">SIDE B</button></span><span class="val" id="count" data-testid="note-count"></span></h2>
+      <canvas id="grid" data-testid="note-grid" height="300"></canvas>
+      <div class="legend" style="margin-top:6px"><span><b style="background:#1D3557"></b>pin</span><span><b style="background:#E63946"></b>needs attention</span><span style="color:#2A9D8F">teal pitch = twin tines (fast repeats OK)</span><span>click = toggle · shift-click = hear the tine</span></div>
+      <div class="row" style="margin-top:10px">
+        <button id="play" class="btn red" data-testid="play-button">▶ PLAY</button>
+        <button id="review-btn" class="btn" data-testid="review-button">REVIEW AS THE TOY (8 kHz WAV)</button>
+        <a id="review-dl" class="btn sm hidden" data-testid="review-download">⬇ WAV</a>
+        <button id="clear" class="btn sm" data-testid="clear-button">CLEAR SIDE</button>
+        <span class="grow"></span>
+        <button id="press" class="btn primary big" style="width:auto" data-testid="press-button">⬤ CUT THE RECORD</button>
+      </div>
+      <audio id="review" controls class="hidden" style="width:100%;margin-top:8px" data-testid="review-audio"></audio>
+    </div>
+    <div class="card">
+      <h2>4 · Your record</h2>
+      <div id="result" data-testid="result"></div>
+      <div id="viewer" data-testid="record-3d-viewer" style="margin-top:10px"></div>
+      <div class="hint">drag to rotate · scroll to zoom · READ LABEL looks straight down at the title arc, record number and the Barbara dedication ring</div>
+    </div>
+    <div class="card">
+      <h2>Album · whole song on several discs</h2>
+      <div class="row"><button id="album-plan" class="btn" data-testid="album-plan">PLAN THE ALBUM FROM THIS MIDI</button></div>
+      <div id="album" data-testid="album-panel"></div>
+    </div>
+    <div class="card">
+      <h2>Record shelf</h2>
+      <div id="shelf" data-testid="record-shelf"></div>
+      <input type="file" id="restore-file" accept=".zip" class="hidden">
+    </div>
+  </section>
+  <aside>
+    <div class="card">
+      <h2>1 · Load MIDI</h2>
+      <input type="file" id="file" accept=".mid,.midi" data-testid="midi-file">
+      <div class="hint">or drop a .mid anywhere on the page</div>
+      <div id="midi-info" class="mono" data-testid="midi-info"></div>
+      <label class="f">Title (side A)</label><input type="text" id="title" data-testid="title-input" placeholder="e.g. Twinkle Twinkle">
+      <div id="sideb-wrap" class="hidden"><label class="f">Title (side B)</label><input type="text" id="titleb" data-testid="title-b-input"></div>
+      <label class="f">Window start <span id="start-val" class="val">0.0s</span></label><input type="range" id="start" min="0" max="60" step="0.5" value="0" data-testid="start-slider">
+      <div id="fit-info" class="hint" data-testid="fit-info"></div>
+      <details style="margin-top:8px"><summary>Tracks · melody confidence</summary><div id="tracks" class="tracks" data-testid="track-picker"></div></details>
+      <details style="margin-top:8px"><summary>Factory tunes library</summary><div id="library" data-testid="library"></div></details>
+      <div class="row" style="margin-top:10px"><button id="testdisc" class="btn" data-testid="testdisc-button">PRESS A CHORD TEST DISC (1·2·3 NOTES)</button></div>
+      <div id="testnotes" class="status" style="margin-top:8px" data-testid="test-disc-notes"></div>
+    </div>
+    <div class="card">
+      <h2>2 · Settings</h2>
+      <div id="settings" data-testid="settings-panel"></div>
+    </div>
+    <div class="card">
+      <h2>Print guide</h2>
+      <ul class="mono" style="padding-left:16px;line-height:1.6">
+        <li>Print flat, label side up, 0.2 mm layers or finer, 3+ walls.</li>
+        <li>Enable Arachne / variable line width so pin tips are not dropped.</li>
+        <li>Clean stringing and seams off the pins before the first play.</li>
+        <li>Grooves are 1.2 mm deep; pins are triangle ramps on the groove walls.</li>
+        <li>Records, settings and albums are saved in this browser — use BACKUP to keep a copy.</li>
+      </ul>
+    </div>
+  </aside>
+</main>
+<footer>Fisher-Price Record Maker · HTML5 / CSS3 / JavaScript edition — no install, no server · Dedicated To My Fiancée Barbara · Copyright 2026 Russ Campbell. All rights reserved.<br>3D engine (manifold-3d), fonts and three.js load from the internet the first time; everything else runs offline.</footer>
+<script>/*__JS__*/</script>
+</body>
+</html>

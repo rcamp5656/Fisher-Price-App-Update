@@ -155,11 +155,11 @@ def test_press_default_pin_radius_is_0_8():
     }, timeout=180)
     assert r.status_code == 200, r.text
     rec = r.json()
-    assert rec.get("pin_radius") == 0.8, f"default pin_radius should be 0.8, got {rec.get('pin_radius')}"
+    assert rec.get("pin_radius") == 0.9, f"default pin_radius should be 0.9, got {rec.get('pin_radius')}"
     # SCAD contains pinDepth = 0.8 and sqrt(3)
     scad = requests.get(f"{API}/conversions/{rec['id']}/scad", timeout=20).text
-    assert "pinDepth = 0.8" in scad
-    assert "pinBase = 1.6" in scad and "pinSink = 0.5" in scad
+    assert "pinDepth = 0.9" in scad
+    assert "pinBase = 1.8" in scad and "pinSink = 0.5" in scad
 
 
 def test_press_pin_radius_0_3_rejected():

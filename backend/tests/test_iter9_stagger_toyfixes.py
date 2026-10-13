@@ -1,5 +1,5 @@
 """Iteration 9: /api/press enforces factory stagger server-side; toy_fixes counts fixes;
-echoed partition is the fixed one; pin_radius default 0.8."""
+echoed partition is the fixed one; pin_radius default 0.9."""
 import os
 from pathlib import Path
 
@@ -68,14 +68,14 @@ def test_press_chord_and_single_tine_repeat_fixed():
 
 
 def test_press_default_pin_radius_is_0_8():
-    """pin_radius default should be 0.8 (iter9 fix)."""
+    """pin_radius default should be 0.9 (print-tested)."""
     part = _empty_partition()
     # 10 well-spaced notes on different tones
     for i, b in enumerate(range(0, 80, 8)):
         part[i % 16][b] = True
     r = _press("TEST_Iter9_PinDefault", part)
     assert r.status_code == 200, r.text
-    assert r.json().get("pin_radius") == 0.8
+    assert r.json().get("pin_radius") == 0.9
 
 
 def test_press_echo_fixed_partition_matches_rules():
