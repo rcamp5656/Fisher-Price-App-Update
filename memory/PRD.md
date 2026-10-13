@@ -8,13 +8,23 @@ Fisher-Price Music Box Record Player. User later specified: sample the first
 (tracker) and **.scad** (OpenSCAD) files alongside the **.stl**.
 
 ## Architecture
-- **Frontend**: React 19 + Tailwind + react-three-fiber/drei (3D STL preview).
+- **Frontend**: React 19 + Tailwind + react-three-fiber/drei (3D STL preview),
+  Web Audio API music-box synth (no external API).
 - **Backend**: FastAPI. Pure-Python MIDI→geometry engine (`fisher_price.py`)
-  using `mido` (MIDI parse), `trimesh` + `manifold3d` (watertight mesh / STL).
-- **DB**: MongoDB (`conversions` collection). STL stored base64; FPR/SCAD as text.
+  using `mido` (MIDI parse), `trimesh` + `manifold3d` (watertight mesh / STL),
+  `matplotlib` TextPath + `shapely` (curved label lettering).
+- **DB**: MongoDB (`conversions` collection). STL stored base64; FPR/SCAD as text;
+  editable partitions (16×86) stored with each record.
 - Geometry ported faithfully from the user's own "Fisher-Price-Music-Box-Record-Creator"
   repo (Fred's record creator template): Ø121mm disc, 11 grooves / 22 tracks,
-  16 playable tines, 86 beats per revolution, 4 drive holes + centre spindle.
+  **22 tines = 16 distinct pitches** (C6–A6 doubled on twin tines), 86 beats per
+  revolution, 4 drive holes + centre spindle.
+
+## Physics note (answer to "how many seconds?")
+The toy's spring motor fixes play time: one revolution ≈ 25 s freshly wound
+(slows to ~35–40 s). The capture window only decides how much MIDI is squeezed
+into the 86 beats: 32 s window ⇒ tune plays at 128 % tempo. "Match toy" button
+sets window = revolution time so the tune plays at original tempo.
 
 ## User Persona
 Maker / vintage-toy enthusiast who wants to 3D-print custom song discs that play
@@ -22,22 +32,33 @@ on an original Fisher-Price music box record player.
 
 ## Core Requirements (static)
 - Upload MIDI, sample first N seconds (default 25) → one disc revolution.
-- Map/transpose notes onto the 16 physical tines; snap off-scale notes to nearest.
+- Map/transpose notes onto the 16 pitches; snap off-scale notes to nearest.
 - Generate printable STL + OpenSCAD (.scad) + tracker (.fpr).
 - Interactive 3D preview; download all three formats.
 
-## Implemented (2026-06 / built 2026-10-13)
-- MIDI parsing with first-`duration`-seconds truncation.
-- Auto-transposition (maximize on-pitch hits) + manual semitone offset.
+## Implemented
+### 2026-10-13 (session 1)
+- MIDI parsing with first-`duration`-seconds truncation; auto-transposition + manual offset.
 - Faithful disc mesh (grooves, drive holes, label inset, note pins/bumps).
-- STL/SCAD/FPR exporters + download endpoints.
-- Chunky retro-maker UI: upload, settings (auto-transpose, 25s window, thickness),
-  3D viewer, spec sheet, playable-tines panel, recent-pressings history.
-- Full E2E tested (backend 100%, frontend 100%).
+- STL/SCAD/FPR exporters + download endpoints; retro-maker UI; 3D viewer; history.
+
+### 2026-10-13 (session 2 — this fork)
+- **Flow redesign**: upload → `POST /api/analyze` → Note Editor → `POST /api/press` → 3D + downloads.
+- **Capture window** up to 45 s, live "% tempo" readout, merged-note count/warning, "match toy" button.
+- **Curved disc labels**: title raised 0.6 mm inside the label recess, bent around
+  the spindle (r 14–18.5 mm, clears drive holes). Side B title on underside.
+  SCAD gets per-letter `glyph()` placement. Engrave toggle.
+- **Two-sided discs**: Side B from a 2nd MIDI file or by continuing the same song
+  (window 2). Bottom grooves + mirrored pins via flip transform. `.fpr?side=b`.
+- **Note editor**: 16×86 grid, click add/remove, drag to nudge, reset, twin-tine (×2)
+  markers, side A/B tabs, stale-settings badge.
+- **Song preview**: Web Audio music-box pluck synth at real toy speed (25–40 s/rev slider), playhead.
+- UI labels corrected: "22 tines (16 pitches)".
+- Full E2E tested: backend 13/13, frontend all flows (iteration_2.json).
 
 ## Backlog / Remaining
-- P2: Store STL in GridFS/filesystem instead of base64 (16MB doc limit for very long songs).
-- P2: Upload size limit / rate guard on /api/convert.
+- P1: User validation of physical prints (pin height/width on the real toy).
+- P2: Store STL in GridFS/filesystem instead of base64 (16MB doc limit).
+- P2: Model single-tine repeat limit (warn when a non-twin pitch repeats on adjacent beats).
 - P2: Migrate deprecated FastAPI `on_event` to lifespan.
-- P2: Optional disc title engraving in the label area.
-- P2: Two-sided discs (verso) support (template already supports it).
+- P2: Loop playback / per-side playback of whole disc in preview.
