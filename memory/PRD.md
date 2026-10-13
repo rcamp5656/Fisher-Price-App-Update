@@ -127,6 +127,25 @@ on an original Fisher-Price music box record player.
   (`halves_ok`). Added scipy + networkx (trimesh graph engines).
 - Tested: iteration_10.json (backend 67/67, all UI flows pass).
 
+### 2026-10-13 (session 3, part 2)
+- **Jump to playhead**: clicking a beat on the editor ruler (`ruler-beat-{b}`) plays the preview
+  from that beat; red cue marker; `useMusicBox.play({side, beat})`.
+- **Chord roll direction**: Settings `roll-before`/`roll-after` (default before). `_slide` leans
+  the preferred way for LEAN_BEATS=4 before trying the other side. `roll` accepted by
+  /api/analyze (form) and /api/press (json), stored on the record. Mirrored in `fp.js`.
+- **mesh-check.txt** in the Print Pack ZIP (`_mesh_report`), README updated.
+- **MIDI vs DISC compare panel** (`compare-toggle`): side-by-side mini grids with moved/placed
+  highlights, HEAR MIDI (real MIDI slice at true timing, toy key) vs HEAR DISC (toy speed),
+  match score; editor shows dashed ghost cells where the MIDI had a note before it moved.
+- **Auto-Fit** (user: automatic on load/window move, tempo ±35 %, start nudge ±0.5 s):
+  `fisher_price.auto_fit` + `compare_fit` + `POST /api/autofit` — up to 12,000 candidate
+  mappings (seconds-per-rev × start phase; numpy quick score, then full stagger+compare on the
+  best ~300, then fine pass), ~0.5–0.8 s. Score = 50 % notes matched + 30 % timing +
+  20 % pitch exact − TEMPO_PENALTY·|tempo−1|. Analysis now returns `events` and `fit`.
+  Frontend: `autofit-toggle` (default ON) applies fitted duration + nudged start without
+  marking stale; dragging the duration slider / match-toy turns auto-fit off.
+- Tested: iteration_11.json (backend 76/76 after max_tries fix, frontend 100 %).
+
 ## Backlog / Remaining
 - P1: User validation of physical prints (pin height/width on the real toy).
 - P1: User to verify twin tines 8/9 sound the same pitch on their player (confirms comb mapping).

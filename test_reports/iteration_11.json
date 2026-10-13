@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 11 (jump-to-playhead / roll / mesh-check.txt / compare / autofit) verified end-to-end. Backend: 75/76 pytest green (72 regression + 4 new iter11 autofit; iter11_roll 5/5). /api/analyze with chord-at-5s roll=before -> non-top notes at beats < top; roll=after -> non-top notes at beats > top; top note (highest tone) stays. /api/press roll=after on chord {1,3,5}@beat 10 -> tone5 stays, others > 10; roll=before -> others < 10. Invalid roll='sideways' -> 422. GET /conversions/{id}/pack ZIP contains mesh-check.txt with 'Verdict: PRINT READY' and 'watertight (no holes) ............ yes'; README mentions mesh-check.txt. /api/autofit on sample_twinkle.mid returns 200 with fit.tries=11,748, duration=18.8s (within 16.25-33.75), score=96.7 (> plain analyze 92.6), events non-empty, dropped=0, 1-pin-per-beat. /api/autofit start=999 -> 422. Frontend: upload sample_twinkle.mid + analyze -> editor shows, autofit-result='97% match after 11,748 tries · 28 notes matched · ±2 ms timing · tempo x0.75', autofit-score='97% match', duration-value='18.8s of song', window-ruler-caption 'window 0.0s -> 18.8s of song · 86 beats = 1 revolution · 0.22 s/beat', convert-button NOT disabled, no stale-badge. Clicking ruler-beat-20 then ruler-beat-40 -> exactly one cue-marker each time, playhead element present, play-button shows STOP. compare-toggle opens compare-panel with compare-grid-midi, compare-grid-disc, compare-summary 'identical ... 97% match ... tempo'. compare-play-midi: HEAR MIDI -> STOP -> STOP (toggles); same for compare-play-disc. roll-before active by default (dark bg bg-[#1D3557] text-white); click roll-after -> roll-hint changes to '...follow just after...'; stale-badge appears; re-analyze succeeds, stale clears, duration stays 18.8s. autofit-toggle OFF -> autofit-hint 'Off - the window length and start are used exactly as set below.'; moving duration-slider updates duration to 19.1s and keeps autofit OFF. Toggle back ON + LOAD NOTES restores 18.8s. Factory tune library-twinkle-twinkle-little-star loads editor, compare-toggle still present, HEAR MIDI toggles STOP, zero console errors. CUT THE RECORD pack endpoint returns ZIP containing mesh-check.txt with PRINT READY verdict.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/autofit", "issue": "max_tries=500 is not strictly honoured — the coarse enumeration (len(deltas) * n_dur) alone yields ~550 entries and the top-300 'full()' loop runs without checking the max_tries budget, so fit.tries can exceed the requested limit (observed 1350 for max_tries=500). Only the fine-pass loop at the end respects the budget. Should either (a) truncate 'coarse' to max(1, max_tries - 300) items, or (b) break the full() loop early when tries >= max_tries. Not visible to users (default 12,000 is almost never exceeded in production), but violates the documented contract."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter11_autofit.py",
+    "/app/backend/tests/test_iter11_roll.py",
+    "/app/test_reports/pytest/iter11_regression.xml"
+  ],
+  "action_items": [
+    "Enforce fit.tries <= max_tries in /api/autofit (see minor backend issue). Suggested fix: in fisher_price.auto_fit, replace `for _, d, u in coarse[:300]:` with a loop that breaks when `tries >= max_tries`, and clip the coarse grid to max_tries - initial_budget."
+  ],
+  "critical_code_review_comments": [
+    "fisher_price.py is now 1064 lines — past the 700-line split threshold. Separating geometry/mesh (build_mesh, heal_mesh, STL, SCAD) from analysis (events_to_record, auto_fit, compare_fit, stagger_partition, make_playable) would significantly help maintenance.",
+    "server.py still uses deprecated @app.on_event('shutdown') — migrate to lifespan.",
+    "auto_fit's full() inner loop ignores the max_tries budget — see action_items above."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter11_autofit.py"
+  ],
+  "success_rate": {"backend": "98.7% (75/76 pytest; sole failure is the documented max_tries budget contract)", "frontend": "100% of iter11 assertions"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "TEST_Iter11_RollAfter, TEST_Iter11_RollBefore, TEST_Iter11_Pack, TEST_FEV_pack. Numbering restored to 6 via PUT /api/numbering.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter11 adds: /api/autofit (multipart file + start + rev_seconds + roll + max_tries, returns Analysis + events + fit); /api/analyze and /api/press now accept roll='before'|'after'; ZIP pack includes mesh-check.txt via _mesh_report(doc). Frontend: SettingsPanel has autofit-toggle (default ON, hint autofit-hint, result autofit-result/autofit-score) and roll-before/roll-after (hint roll-hint). onAnalyze with autofit ON calls /autofit and applies fit.duration/start without marking stale. NoteEditor renders beat-ruler with ruler-beat-{b} buttons -> seek()/play from that beat; cue-marker and playhead render inside the editor. EditorWorkspace has compare-toggle -> ComparePanel (compare-grid-midi, compare-grid-disc, compare-summary, compare-fit, compare-play-midi, compare-play-disc). For file uploads use set_input_files on the hidden input [data-testid='midi-upload-zone-input'] (don't wait_for_selector visible). ComparePanel re-renders on play-state change so always re-query by data-testid before clicking a second time.",
+  "rca of the issue": "max_tries ignored: in /app/backend/fisher_price.py auto_fit(), the enumeration computes `coarse = sorted(...)` from a cartesian product of deltas x durs, incrementing `tries = len(coarse)` before any budget check. It then iterates `for _, d, u in coarse[:300]` and runs the expensive full() scoring 300 times without consulting max_tries. Only the final fine-pass respects the budget. For small max_tries values (e.g. 500) the function returns fit.tries ~ len(deltas)*n_dur + 300 (observed 1350) which is > 500. Repro: POST /api/autofit multipart file=sample_twinkle.mid start=0 rev_seconds=25 max_tries=500 -> fit.tries=1350. Mitigation: cap coarse at (max_tries - 300) items, and break the full() loop when tries >= max_tries."
+}

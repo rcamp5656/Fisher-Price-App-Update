@@ -296,7 +296,8 @@ def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
         return 100 * (1 - 0.5 * (merged + chords + rep) / n - 0.3 * float(err.mean())) - TEMPO_PENALTY * abs(dur / rev_seconds - 1)
 
     deltas = np.arange(0, 2 * nudge + 1e-9, 0.05)
-    n_dur = max(50, (max_tries - 600) // len(deltas))
+    refine = min(300, max(10, max_tries // 10))
+    n_dur = max(1, (max_tries - 2 * refine) // len(deltas))
     durs = np.linspace(d_lo, d_hi, n_dur)
     coarse = sorted(((quick(d, u), d, u) for d in deltas for u in durs), reverse=True)
     tries = len(coarse)
@@ -309,7 +310,9 @@ def auto_fit(midi_bytes: bytes, start: float, rev_seconds: float = 25.0,
         return fit["score"], delta, dur, rec, fit, ev
 
     best = None
-    for _, d, u in coarse[:300]:
+    for _, d, u in coarse[:refine]:
+        if tries >= max_tries:
+            break
         cand = full(d, u)
         tries += 1
         if best is None or cand[0] > best[0]:
