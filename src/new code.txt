@@ -1,0 +1,12 @@
+        checkitout2:
+        directoryname = runit
+        TwoSided = "N"
+        filename_length = Len(runit)
+        filename = Mid$(directoryname, 22, filename_length)
+        extender_type = Mid$(filename, (filename_length - 5), filename_length)
+        If Len(extender_type) = 4 Then
+            extender_type = Mid$(filename, (filenamelength - 4), filename_length)
+        End If
+        If Len(extender_type) = 5 Then
+        End If
+        extender_length = Len(extender_type)

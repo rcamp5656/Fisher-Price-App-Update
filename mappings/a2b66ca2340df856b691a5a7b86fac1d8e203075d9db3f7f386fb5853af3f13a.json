@@ -1,0 +1,114 @@
+{
+    "1": {
+        "reverb": 60,
+        "chorus": 20,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "2": {
+        "reverb": 60,
+        "chorus": 20,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "3": {
+        "reverb": 60,
+        "chorus": 20,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "4": {
+        "reverb": 40,
+        "chorus": 0,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "5": {
+        "reverb": 40,
+        "chorus": 0,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "6": {
+        "reverb": 20,
+        "chorus": 5,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "7": {
+        "reverb": 20,
+        "chorus": 5,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "8": {
+        "reverb": 40,
+        "chorus": 0,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "9": {
+        "reverb": 40,
+        "chorus": 0,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "10": {
+        "reverb": 25,
+        "chorus": 0,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "11": {
+        "reverb": 40,
+        "chorus": 0,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "12": {
+        "reverb": 40,
+        "chorus": 0,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "13": {
+        "reverb": 40,
+        "chorus": 0,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "14": {
+        "reverb": 40,
+        "chorus": 0,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "15": {
+        "reverb": 40,
+        "chorus": 0,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    },
+    "16": {
+        "reverb": 40,
+        "chorus": 0,
+        "cutoff": 64,
+        "resonance": 64,
+        "release": 64
+    }
+}

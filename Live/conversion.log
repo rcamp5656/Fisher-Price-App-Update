@@ -1,0 +1,5 @@
+2025-06-15 21:15:16,431 - INFO - Starting enhancement...
+2025-06-15 21:15:16,432 - INFO - Parsing MIDI: The_Number_Of_The_Beast.mid
+2025-06-15 21:15:21,971 - INFO - Processing track 0, instrument offset 0
+2025-06-15 21:15:21,971 - INFO -   Track 0 note 0
+2025-06-15 21:15:21,972 - ERROR - Enhancement failed: module 'music21.instrument' has no attribute 'fromMidiProgram'

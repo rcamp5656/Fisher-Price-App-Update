@@ -1,0 +1,14 @@
+2025-11-19 21:20:26,730 - INFO - File logger initialized successfully at: F:\Fisher-Price-App\log.txt
+2025-11-19 21:20:26,731 - INFO - Application starting...
+2025-11-19 21:20:26,980 - INFO - Attempting to initialize 7.1 Surround audio (48000Hz, 8-ch)...
+2025-11-19 21:20:27,045 - INFO - Successfully initialized 7.1 Surround audio.
+2025-11-19 21:20:27,046 - INFO - External MIDI output disabled. Using internal Multi-Synth.
+2025-11-19 21:20:27,047 - INFO - Loading fallback GM font: Arachno SoundFont - Version 1.0.sf2
+2025-11-19 21:20:27,482 - INFO - Fallback GM font loaded with IDs: {'melody': 1, 'bass': 1, 'harmony': 1, 'rhythm': 1}
+2025-11-19 21:20:27,499 - INFO - GL: NPOT texture support is available
+2025-11-19 21:20:27,501 - WARNING - Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x0000021D7D4F28F0>" has been set, it will be removed in a future version
+2025-11-19 21:20:27,502 - WARNING - Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x0000021D7D4F28F0>" was accessed, it will be removed in a future version
+2025-11-19 21:20:27,519 - INFO - Loading static WAV for playback at requested 192000Hz, 2 channels.
+2025-11-19 21:20:27,661 - INFO - Static playback started: 192000Hz, 2 Channels, 32-bit Unsigned, Buffer 65536.
+2025-11-19 21:20:27,800 - INFO - Base: Start application main loop
+2025-11-19 21:20:41,583 - INFO - Base: Leaving application in progress...

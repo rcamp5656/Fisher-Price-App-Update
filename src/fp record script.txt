@@ -1,0 +1,38 @@
+         910 File(s)     33,460,416 bytes
+               0 Dir(s)  38,849,884,160 bytes free
+Please enter the first  filename [Without Extender] : ZZ_Top_-_Gimme_All_Your_Lovin
+Please enter the second filename [Without Extender] : ZZ_Top_-_Gimme_All_Your_Lovin
+usage: music_box_tracker.py [-h] [--port PORT] [--fpr FPR] [--mid MID] [--program PROGRAM] [--title TITLE] [--low]
+                            [--wholedisc]
+music_box_tracker.py: error: unrecognized arguments: --audio midi --bpm 56 --offset 32
+usage: music_box_tracker.py [-h] [--port PORT] [--fpr FPR] [--mid MID] [--program PROGRAM] [--title TITLE] [--low]
+                            [--wholedisc]
+music_box_tracker.py: error: unrecognized arguments: --audio midi --bpm 56 --offset 32
+Writing scad file ....
+The system cannot find the file specified.
+The system cannot find the file specified.
+Could Not Find c:\Fisher-Price-Menu\midi\ZZ_Top_-_Gimme_All_Your_Lovin.fpr
+Could Not Find c:\Fisher-Price-Menu\midi\ZZ_Top_-_Gimme_All_Your_Lovin.fpr
+usage: fpr_to_scad.py [-h] --fpr FPR [--fprbis FPRBIS] [--scad SCAD] [--thickness THICKNESS] [--beats BEATS]
+                      [--beatsbis BEATSBIS]
+fpr_to_scad.py: error: unrecognized arguments: --fprverso c:\Fisher-Price-Menu\midi\ZZ_Top_-_Gimme_All_Your_Lovin.fpr
+Cannot find c:\Fisher-Price-Menu\midi\ZZ_Top_-_Gimme_All_Your_Lovin.fpr
+Cannot find c:\Fisher-Price-Menu\midi\ZZ_Top_-_Gimme_All_Your_Lovin.fpr
+The system cannot find the file specified.
+The system cannot find the file specified.
+The system cannot find the file specified.
+Could Not Find c:\Fisher-Price-Menu\midi\ZZ_Top_-_Gimme_All_Your_Lovin.fpr
+Could Not Find c:\Fisher-Price-Menu\midi\ZZ_Top_-_Gimme_All_Your_Lovin.fpr
+Could Not Find c:\Fisher-Price-Menu\midi\ZZ_Top_-_Gimme_All_Your_Lovin.scad
+Could Not Find c:\Fisher-Price-Menu\midi\ZZ_Top_-_Gimme_All_Your_Lovin.scad
+ Volume in drive C is Drive C
+ Volume Serial Number is BC13-9C69
+
+ Directory of c:\Fisher-Price-Menu\scad
+
+fisherpricetemplate.scad   TestFont.scad              TestSurfaceText.scad       TestWrite.scad
+TestWriteCube.scad         TestWriteCylinder.scad     TestWriteSphere.scad       Write.scad
+               8 File(s)         26,822 bytes
+               0 Dir(s)  38,851,297,280 bytes free
+Done
+Press any key to continue . . .
