@@ -7,28 +7,33 @@ import RecordViewer from "../components/RecordViewer";
 import UploadZone from "../components/UploadZone";
 import SettingsPanel from "../components/SettingsPanel";
 import EditorWorkspace from "../components/EditorWorkspace";
+import SongOverview from "../components/SongOverview";
+import LibraryPicker from "../components/LibraryPicker";
+import CombEditor from "../components/CombEditor";
 import { DownloadPanel, SpecSheet, HistoryPanel } from "../components/ResultPanels";
 import PrintGuide from "../components/PrintGuide";
-import { CARD, BTN_BASE, BTN_DISABLED, MAX_BEAT, NOTES, TOY_REV_SECONDS } from "../lib/fp";
+import { CARD, BTN_BASE, BTN_DISABLED, TOY_REV_SECONDS, applyComb, emptyPartition } from "../lib/fp";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const stem = (name) => name.replace(/\.[^.]+$/, "").slice(0, 40);
 const emptyAnalysis = () => ({
-  partition: NOTES.map(() => Array(MAX_BEAT).fill(false)),
-  offset: 0, exact: 0, adjusted: 0, merged: 0, note_count: 0,
+  partition: emptyPartition(), offset: 0, exact: 0, adjusted: 0, merged: 0, staggered: 0, note_count: 0,
 });
 
 const DEFAULTS = {
   title: "", titleB: "", thickness: 3.0, duration: TOY_REV_SECONDS, autoTranspose: true,
-  manualOffset: 0, twoSided: false, sideMode: "continue", engrave: true,
+  manualOffset: 0, twoSided: false, sideMode: "continue", engrave: true, recordNo: "", nextNo: null,
 };
 
 export default function Creator() {
   const [files, setFiles] = useState({ a: null, b: null });
+  const [scans, setScans] = useState({ a: null, b: null });
+  const [starts, setStarts] = useState({ a: 0, b: 0 });
   const [s, setS] = useState(DEFAULTS);
   const [revSeconds, setRevSeconds] = useState(TOY_REV_SECONDS);
   const [analysis, setAnalysis] = useState(null);
   const [parts, setParts] = useState({ a: null, b: null });
+  const [overrides, setOverrides] = useState({ a: {}, b: {} });
   const [active, setActive] = useState("a");
   const [stale, setStale] = useState(false);
   const [result, setResult] = useState(null);
@@ -38,6 +43,7 @@ export default function Creator() {
   const [notice, setNotice] = useState(null);
   const [history, setHistory] = useState([]);
   const [loop, setLoop] = useState(false);
+  const [combVersion, setCombVersion] = useState(0);
   const skipStale = useRef(false);
 
   const set = (patch) => setS((p) => ({ ...p, ...patch }));
@@ -51,6 +57,7 @@ export default function Creator() {
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
   useEffect(() => {
+    axios.get(`${API}/comb`).then(({ data }) => { applyComb(data); setCombVersion((v) => v + 1); }).catch(() => {});
     const id = new URLSearchParams(window.location.search).get("open");
     if (!id) return;
     axios.get(`${API}/conversions/${id}`)
@@ -60,13 +67,29 @@ export default function Creator() {
   }, []);
 
   useEffect(() => {
+    const t = setTimeout(() => {
+      axios.get(`${API}/next-record-no`, { params: { title: s.title } })
+        .then(({ data }) => set({ nextNo: data.record_no })).catch(() => {});
+    }, 300);
+    return () => clearTimeout(t);
+  }, [s.title, result]);
+
+  useEffect(() => {
     if (skipStale.current) { skipStale.current = false; return; }
     if (analysis) setStale(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files.a, files.b, s.duration, s.autoTranspose, s.manualOffset, s.twoSided, s.sideMode]);
+  }, [files.a, files.b, starts.a, starts.b, s.duration, s.autoTranspose, s.manualOffset, s.twoSided, s.sideMode, combVersion]);
 
-  const onFileA = (f) => { setFiles((p) => ({ ...p, a: f })); setS((p) => ({ ...p, title: p.title || stem(f.name) })); };
-  const onFileB = (f) => { setFiles((p) => ({ ...p, b: f })); setS((p) => ({ ...p, titleB: p.titleB || stem(f.name) })); };
+  const scanFile = async (key, f) => {
+    const form = new FormData();
+    form.append("file", f);
+    try {
+      const { data } = await axios.post(`${API}/scan`, form);
+      setScans((p) => ({ ...p, [key]: data }));
+    } catch (e) { setScans((p) => ({ ...p, [key]: null })); }
+  };
+  const onFileA = (f) => { setFiles((p) => ({ ...p, a: f })); setStarts((p) => ({ ...p, a: 0 })); setS((p) => ({ ...p, title: p.title || stem(f.name) })); scanFile("a", f); };
+  const onFileB = (f) => { setFiles((p) => ({ ...p, b: f })); setStarts((p) => ({ ...p, b: 0 })); setS((p) => ({ ...p, titleB: p.titleB || stem(f.name) })); scanFile("b", f); };
 
   const analyzeSide = async (file, start) => {
     const form = new FormData();
@@ -82,28 +105,41 @@ export default function Creator() {
   const needsB = s.twoSided && s.sideMode === "file";
   const canAnalyze = files.a && (!needsB || files.b) && !busy;
 
+  const applyAnalysis = (a, b) => {
+    setAnalysis({ a, b });
+    setParts({ a: a.partition, b: b ? b.partition : null });
+    setOverrides({ a: {}, b: {} });
+    setActive("a"); setStale(false); setResult(null); setTab("notes");
+  };
+
   const onAnalyze = async () => {
     if (!canAnalyze) return;
     setBusy("analyze"); setError(null); setNotice(null);
     try {
-      const a = await analyzeSide(files.a, 0);
+      const a = await analyzeSide(files.a, starts.a);
       let b = null;
       if (s.twoSided) {
         try {
-          b = s.sideMode === "file" ? await analyzeSide(files.b, 0) : await analyzeSide(files.a, s.duration);
+          b = s.sideMode === "file" ? await analyzeSide(files.b, starts.b) : await analyzeSide(files.a, starts.a + s.duration);
         } catch (e) {
           if (e?.response?.status !== 422) throw e;
           b = emptyAnalysis();
-          setNotice(`Side B is blank — no notes found ${s.sideMode === "file" ? "in that file" : `between ${s.duration}s and ${s.duration * 2}s`}. You can draw notes by hand.`);
+          setNotice(`Side B is blank — no notes found ${s.sideMode === "file" ? "in that file" : `between ${(starts.a + s.duration).toFixed(0)}s and ${(starts.a + s.duration * 2).toFixed(0)}s`}. You can draw notes by hand.`);
         }
       }
       skipStale.current = false;
-      setAnalysis({ a, b });
-      setParts({ a: a.partition, b: b ? b.partition : null });
-      setActive("a"); setStale(false); setResult(null); setTab("notes");
+      applyAnalysis(a, b);
     } catch (e) {
       setError(e?.response?.data?.detail || "Could not read that MIDI file.");
     } finally { setBusy(null); }
+  };
+
+  const onPickTune = (t) => {
+    setError(null); setNotice(null);
+    set({ title: t.title });
+    skipStale.current = true;
+    applyAnalysis(t.analysis, s.twoSided ? emptyAnalysis() : null);
+    setTimeout(() => { skipStale.current = false; }, 0);
   };
 
   const onPress = async () => {
@@ -118,12 +154,15 @@ export default function Creator() {
         title_b: s.titleB.trim() || "Side B",
         thickness: s.thickness,
         engrave: s.engrave,
-        filename: files.a?.name || "record.mid",
+        filename: files.a?.name || "library.mid",
         duration: s.duration,
         offset: analysis.a.offset,
         exact: analysis.a.exact + (b?.exact || 0),
         adjusted: analysis.a.adjusted + (b?.adjusted || 0),
         merged: analysis.a.merged + (b?.merged || 0),
+        record_no: s.recordNo === "" ? null : Number(s.recordNo),
+        overrides: overrides.a,
+        overrides_b: s.twoSided ? overrides.b : null,
       });
       setResult(data); setTab("preview"); loadHistory();
     } catch (e) {
@@ -134,22 +173,23 @@ export default function Creator() {
   const openHistory = (h) => {
     setResult(h); setTab("preview"); setError(null);
     if (!h.partition) return;
-    const mk = (p, meta) => ({ partition: p, offset: meta.offset ?? 0, exact: meta.exact ?? 0, adjusted: meta.adjusted ?? 0, merged: meta.merged ?? 0 });
+    const mk = (p, meta) => ({ partition: p, offset: meta.offset ?? 0, exact: meta.exact ?? 0, adjusted: meta.adjusted ?? 0, merged: meta.merged ?? 0, staggered: 0 });
     skipStale.current = true;
     setAnalysis({ a: mk(h.partition, h), b: h.partition_b ? mk(h.partition_b, { offset: h.offset }) : null });
     setParts({ a: h.partition, b: h.partition_b || null });
+    setOverrides({ a: h.overrides || {}, b: h.overrides_b || {} });
     setActive("a"); setStale(false);
-    set({ title: h.title, titleB: h.title_b || "", twoSided: !!h.two_sided, thickness: h.thickness, duration: h.duration });
+    set({ title: h.title, titleB: h.title_b || "", twoSided: !!h.two_sided, thickness: h.thickness, duration: h.duration, recordNo: "" });
     setTimeout(() => { skipStale.current = false; }, 0);
   };
 
-  const sides = analysis ? [
-    { key: "a", title: s.title, analysis: analysis.a, partition: parts.a, original: analysis.a.partition,
-      onChange: (p) => setParts((x) => ({ ...x, a: p })) },
-    ...(s.twoSided && analysis.b ? [{
-      key: "b", title: s.titleB, analysis: analysis.b, partition: parts.b, original: analysis.b.partition,
-      onChange: (p) => setParts((x) => ({ ...x, b: p })) }] : []),
-  ] : [];
+  const mkSide = (key) => ({
+    key, title: key === "a" ? s.title : s.titleB, analysis: analysis[key], partition: parts[key],
+    original: analysis[key].partition, overrides: overrides[key],
+    onChange: (p) => setParts((x) => ({ ...x, [key]: p })),
+    onOverrides: (o) => setOverrides((x) => ({ ...x, [key]: o })),
+  });
+  const sides = analysis ? [mkSide("a"), ...(s.twoSided && analysis.b ? [mkSide("b")] : [])] : [];
 
   const showViewer = tab === "preview" && result;
   const TabBtn = ({ id, icon: Icon, label, disabled }) => (
@@ -164,7 +204,7 @@ export default function Creator() {
   );
 
   return (
-    <div className="min-h-screen bg-[#F4F1EA] text-[#1D3557] fp-grain">
+    <div className="min-h-screen bg-[#F4F1EA] text-[#1D3557] fp-grain" key={combVersion}>
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 p-6 md:p-12 max-w-[1400px] mx-auto">
         <header className="col-span-12 flex flex-wrap gap-4 justify-between items-end border-b-4 border-[#1D3557] pb-6">
           <div className="flex items-center gap-4">
@@ -178,7 +218,7 @@ export default function Creator() {
               </p>
             </div>
           </div>
-          <div className="font-mono text-xs text-[#457B9D] hidden sm:block">v3 · 22 tines (16 pitches) · 86 beats / rev · two-sided</div>
+          <div className="font-mono text-xs text-[#457B9D] hidden sm:block">v4 · 22 tines · 86 beats / rev · two-sided</div>
         </header>
 
         {/* Workspace */}
@@ -211,7 +251,7 @@ export default function Creator() {
                 <div className="relative z-10">
                   <Disc3 className="h-16 w-16 mx-auto mb-4 text-[#457B9D]" />
                   <p className="font-sans font-black text-2xl tracking-tight">YOUR RECORD APPEARS HERE</p>
-                  <p className="font-mono text-sm text-[#457B9D] mt-2">Upload a MIDI, load the notes, tweak them, then cut the record</p>
+                  <p className="font-mono text-sm text-[#457B9D] mt-2">Upload a MIDI (or pick a factory tune), load the notes, tweak them, then cut the record</p>
                 </div>
               </div>
             )}
@@ -237,9 +277,18 @@ export default function Creator() {
               <Music4 className="h-5 w-5" /> 1 · LOAD MIDI
             </h2>
             <UploadZone file={files.a} onFile={onFileA} onError={setError} testId="midi-upload-zone" label={needsB ? "Side A" : null} />
-            {needsB && (
-              <UploadZone file={files.b} onFile={onFileB} onError={setError} testId="midi-upload-zone-b" label="Side B" />
+            {scans.a && (
+              <SongOverview scan={scans.a} duration={s.duration} start={starts.a} onStart={(v) => setStarts((p) => ({ ...p, a: v }))} label={needsB ? "Side A" : "Whole song"} />
             )}
+            {needsB && (
+              <>
+                <UploadZone file={files.b} onFile={onFileB} onError={setError} testId="midi-upload-zone-b" label="Side B" />
+                {scans.b && (
+                  <SongOverview scan={scans.b} duration={s.duration} start={starts.b} onStart={(v) => setStarts((p) => ({ ...p, b: v }))} label="Side B" />
+                )}
+              </>
+            )}
+            <LibraryPicker duration={s.duration} onPick={onPickTune} />
           </div>
 
           <div className={`${CARD} p-5 flex flex-col gap-4`}>
@@ -247,6 +296,7 @@ export default function Creator() {
               <Wand2 className="h-5 w-5" /> 2 · SETTINGS
             </h2>
             <SettingsPanel s={s} set={set} revSeconds={revSeconds} />
+            <CombEditor onChanged={() => { setAnalysis(null); setResult(null); setParts({ a: null, b: null }); setCombVersion((v) => v + 1); }} />
           </div>
 
           <button

@@ -3,7 +3,7 @@ import { Play, Square, RotateCcw, Gauge, AlertTriangle, Repeat } from "lucide-re
 import NoteEditor from "./NoteEditor";
 import TrackView from "./TrackView";
 import { useMusicBox } from "../hooks/useMusicBox";
-import { countNotes, speedPct, repeatConflicts, BTN_LIFT } from "../lib/fp";
+import { countNotes, speedPct, repeatConflicts, chordConflicts, BTN_LIFT } from "../lib/fp";
 
 function Stat({ label, value, warn, testId }) {
   return (
@@ -23,8 +23,11 @@ export default function EditorWorkspace({
   const { playing, sideIdx, play, stop, getPos, tap } = useMusicBox(sequence, revSeconds, loop);
   const a = side.analysis;
   const pct = speedPct(duration, revSeconds);
-  const conflicts = useMemo(() => repeatConflicts(side.partition), [side.partition]);
-  const clashCount = conflicts.size;
+  const repeats = useMemo(() => repeatConflicts(side.partition), [side.partition]);
+  const chords = useMemo(() => chordConflicts(side.partition), [side.partition]);
+  const conflicts = useMemo(() => new Set([...repeats, ...chords]), [repeats, chords]);
+  const clashCount = repeats.size;
+  const chordCount = chords.size;
 
   useEffect(() => {
     if (playing && sides[sideIdx]) onActive(sides[sideIdx].key);
@@ -69,6 +72,8 @@ export default function EditorWorkspace({
           <Stat label="Snapped" value={a.adjusted} warn={a.adjusted > 0} />
           <Stat label="Merged" value={a.merged} warn={a.merged > 0} />
           <Stat label="Repeats" value={clashCount} warn={clashCount > 0} testId="stat-repeats" />
+          <Stat label="Chords" value={chordCount} warn={chordCount > 0} testId="stat-chords" />
+          {a.staggered > 0 && <Stat label="Staggered" value={a.staggered} testId="stat-staggered" />}
           <Stat label="Transpose" value={`${a.offset >= 0 ? "+" : ""}${a.offset}`} />
         </div>
       </div>
@@ -77,6 +82,12 @@ export default function EditorWorkspace({
         <p data-testid="merged-warning" className="font-mono text-[11px] text-[#1D3557] bg-[#FFB703] border-2 border-[#1D3557] rounded-md px-2 py-1 flex items-center gap-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           {a.merged} note(s) landed on an already-filled beat and were merged — shorten the capture window for finer timing.
+        </p>
+      )}
+      {chordCount > 0 && (
+        <p data-testid="chord-warning" className="font-mono text-[11px] text-[#1D3557] bg-[#FFB703] border-2 border-[#E63946] rounded-md px-2 py-1 flex items-center gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#E63946]" />
+          {chordCount} highlighted note(s) share a beat with another note — the player plucks one tine at a time, so nudge one of them a beat over (the originals always stagger them).
         </p>
       )}
       {clashCount > 0 && (
@@ -89,7 +100,7 @@ export default function EditorWorkspace({
       <div className="overflow-x-auto flex-1">
         <div className="min-w-[760px]">
           {view === "tracks" ? (
-            <TrackView partition={side.partition} duration={duration} />
+            <TrackView partition={side.partition} duration={duration} overrides={side.overrides} onOverrides={side.onOverrides} />
           ) : (
             <NoteEditor
               partition={side.partition}

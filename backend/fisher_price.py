@@ -10,6 +10,7 @@ concentric tracks. As the disc rotates, the pins pluck the music box tines.
 """
 import math
 import io
+import re
 from typing import List, Dict, Tuple
 
 import numpy as np
@@ -27,17 +28,49 @@ H_GROOVE = 1.2        # depth of the note grooves
 OVERLAP = 0.2         # modelling overlap to keep booleans manifold
 R_CENTER = 3.22       # centre spindle hole radius
 HEAD_OFFSET = 2.0     # angular lead of the playback head
-R_PIN = 0.7           # radius of the semicircular note bumps on the groove walls
+R_PIN = 0.35          # radius of the semicircular note bumps on the groove walls
 
 # Groove inner radii (11 grooves, each holds two note tracks)
 GROOVE_INNERS = [28.15, 30.89, 33.71, 36.425, 39.225, 42,
                  44.825, 47.555, 50.315, 53.11, 55.9]
 
-# The 16 physical tine pitches (MIDI note numbers), low -> high
-NOTES = [67, 72, 74, 76, 79, 81, 83, 84, 86, 88, 89, 91, 93, 95, 96, 98]
-TONES_COUNT = 16
+# Factory comb: MIDI pitch of each of the 22 tines (track 1..22, inner -> outer).
+# Six pitches are duplicated on twin tines so fast repeats can play.
+FACTORY_TRACKS = [67, 72, 74, 76, 79, 81, 83, 84, 84, 86, 86, 88, 88,
+                  89, 89, 91, 91, 93, 93, 95, 96, 98]
 TRACKS_COUNT = 22
 MAX_BEAT = 86         # beats (angular steps) per full revolution
+
+
+class Comb:
+    """Pitch layout of a player's comb: 22 tracks -> unique pitch rows."""
+
+    def __init__(self, tracks: List[int]):
+        if len(tracks) != TRACKS_COUNT:
+            raise ValueError(f"a comb has {TRACKS_COUNT} tines")
+        self.tracks = [int(t) for t in tracks]
+        self.notes = sorted(set(self.tracks))
+        self.tines = [[i for i, t in enumerate(self.tracks) if t == n] for n in self.notes]
+        self.twins = {i for i, g in enumerate(self.tines) if len(g) > 1}
+
+    @property
+    def tones(self) -> int:
+        return len(self.notes)
+
+    def to_dict(self) -> Dict:
+        return {
+            "tracks": self.tracks,
+            "notes": self.notes,
+            "names": [note_name(n) for n in self.notes],
+            "tines": [[i + 1 for i in g] for g in self.tines],
+            "twins": sorted(self.twins),
+            "factory": self.tracks == FACTORY_TRACKS,
+        }
+
+
+DEFAULT_COMB = Comb(FACTORY_TRACKS)
+NOTES = DEFAULT_COMB.notes
+TONES_COUNT = DEFAULT_COMB.tones
 
 # Radius of each of the 22 physical tracks
 TRACK_RADIUS = [
@@ -73,11 +106,16 @@ def parse_midi_events(midi_bytes: bytes, duration: float,
     return events
 
 
-def choose_transposition(notes: List[int]) -> int:
+def midi_length(midi_bytes: bytes) -> float:
+    import mido
+    return mido.MidiFile(file=io.BytesIO(midi_bytes)).length
+
+
+def choose_transposition(notes: List[int], comb: Comb = DEFAULT_COMB) -> int:
     """Find the semitone offset that lands the most notes exactly on the
-    playable tine set (tie-break: smallest total snap distance)."""
-    allowed = set(NOTES)
-    lo, hi = min(NOTES), max(NOTES)
+    playable pitch set (tie-break: smallest total snap distance)."""
+    allowed = set(comb.notes)
+    lo, hi = min(comb.notes), max(comb.notes)
     best_offset, best_score = 0, None
     for offset in range(-48, 49):
         exact = 0
@@ -86,8 +124,7 @@ def choose_transposition(notes: List[int]) -> int:
             m = n + offset
             if m in allowed:
                 exact += 1
-            dist += min(abs(m - a) for a in NOTES)
-        # center of mass must be roughly in range to avoid absurd shifts
+            dist += min(abs(m - a) for a in comb.notes)
         avg = (sum(notes) / len(notes)) + offset
         if not (lo - 6 <= avg <= hi + 6):
             continue
@@ -98,36 +135,49 @@ def choose_transposition(notes: List[int]) -> int:
     return best_offset
 
 
-def snap_note(midi: int) -> int:
-    return min(NOTES, key=lambda a: abs(a - midi))
+def snap_note(midi: int, comb: Comb = DEFAULT_COMB) -> int:
+    return min(comb.notes, key=lambda a: abs(a - midi))
 
 
 def events_to_record(events: List[Tuple[float, int]], duration: float,
                      auto_transpose: bool = True,
-                     manual_offset: int = 0) -> Dict:
-    """Quantize note events onto a 16-tone x MAX_BEAT grid."""
-    partition = [[False] * MAX_BEAT for _ in range(TONES_COUNT)]
+                     manual_offset: int = 0,
+                     comb: Comb = DEFAULT_COMB,
+                     stagger: bool = True) -> Dict:
+    """Quantize note events onto a tones x MAX_BEAT grid. The player can only
+    pluck one tine per beat, so simultaneous notes are staggered onto the
+    nearest free beat (like the factory records)."""
+    partition = [[False] * MAX_BEAT for _ in range(comb.tones)]
+    col_used = [False] * MAX_BEAT
     raw_notes = [n for _, n in events]
 
     offset = 0
     if raw_notes:
-        offset = choose_transposition(raw_notes) if auto_transpose else manual_offset
+        offset = choose_transposition(raw_notes, comb) if auto_transpose else manual_offset
 
-    exact = adjusted = merged = 0
+    exact = adjusted = merged = staggered = 0
     used = set()
-    for t, n in events:
+    for t, n in sorted(events):
         m = n + offset
-        snapped = m if m in NOTES else snap_note(m)
-        if m in NOTES:
+        snapped = m if m in comb.notes else snap_note(m, comb)
+        if m in comb.notes:
             exact += 1
         else:
             adjusted += 1
-        tone = NOTES.index(snapped)
-        beat = int(round(t / duration * MAX_BEAT)) if duration > 0 else 0
+        tone = comb.notes.index(snapped)
+        beat = round(t / duration * MAX_BEAT) if duration > 0 else 0
         beat = max(0, min(MAX_BEAT - 1, beat))
+        if stagger and col_used[beat] and not partition[tone][beat]:
+            for d in (1, -1, 2, -2, 3, -3):
+                nb = beat + d
+                if 0 <= nb < MAX_BEAT and not col_used[nb]:
+                    beat = nb
+                    staggered += 1
+                    break
         if partition[tone][beat]:
             merged += 1
         partition[tone][beat] = True
+        col_used[beat] = True
         used.add(snapped)
 
     return {
@@ -136,6 +186,7 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
         "exact": exact,
         "adjusted": adjusted,
         "merged": merged,
+        "staggered": staggered,
         "notes_used": sorted(used),
         "note_count": len(events),
     }
@@ -144,35 +195,28 @@ def events_to_record(events: List[Tuple[float, int]], duration: float,
 # ---------------------------------------------------------------------------
 # 16 tones -> 22 physical tracks (doubled tracks let fast repeats reset)
 # ---------------------------------------------------------------------------
-def _split(part22, first, second, beats):
-    on_second = False
-    for i, on in enumerate(beats):
-        if on:
-            part22[second if on_second else first][i] = True
-            on_second = not on_second
-
-
-def to_physical(partition: List[List[bool]]) -> List[List[bool]]:
+def to_physical(partition: List[List[bool]], comb: Comb = DEFAULT_COMB,
+                overrides: Dict[str, int] = None) -> List[List[bool]]:
+    """Pitch rows -> 22 physical tracks. Twin-tine pitches alternate between
+    their two tines; `overrides` {"tone-beat": slot} pins a note to tine slot 0/1."""
+    overrides = overrides or {}
     beats = len(partition[0])
     part22 = [[False] * beats for _ in range(TRACKS_COUNT)]
-    for tone in range(TONES_COUNT):
-        track = partition[tone]
-        if tone < 7:
-            part22[tone] = list(track)
-        elif tone == 7:
-            _split(part22, 7, 8, track)
-        elif tone == 8:
-            _split(part22, 9, 10, track)
-        elif tone == 9:
-            _split(part22, 11, 12, track)
-        elif tone == 10:
-            _split(part22, 13, 14, track)
-        elif tone == 11:
-            _split(part22, 15, 16, track)
-        elif tone == 12:
-            _split(part22, 17, 18, track)
-        else:  # 13, 14, 15
-            part22[tone + 6] = list(track)
+    for tone, tracks in enumerate(comb.tines):
+        row = partition[tone]
+        if len(tracks) == 1:
+            part22[tracks[0]] = list(row)
+            continue
+        on_second = False
+        for i, on in enumerate(row):
+            if not on:
+                continue
+            slot = overrides.get(f"{tone}-{i}")
+            if slot is None:
+                slot = 1 if on_second else 0
+            slot = int(slot) % len(tracks)
+            part22[tracks[slot]][i] = True
+            on_second = slot == 0
     return part22
 
 
@@ -356,8 +400,9 @@ def _groove_cutters(H: float) -> List:
     return [_annulus(inner, inner + 2, H_GROOVE + 0.4, gz) for inner in GROOVE_INNERS]
 
 
-def _pin_meshes(partition: List[List[bool]], H: float) -> List:
-    pins = get_pins(to_physical(partition))
+def _pin_meshes(partition: List[List[bool]], H: float, comb: Comb = DEFAULT_COMB,
+                overrides: Dict[str, int] = None) -> List:
+    pins = get_pins(to_physical(partition, comb, overrides))
     out = []
     pz = H - (H_GROOVE + OVERLAP) / 2
     for p in pins:
@@ -370,7 +415,8 @@ def _pin_meshes(partition: List[List[bool]], H: float) -> List:
 
 def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
                title: str = "", partition_b: List[List[bool]] = None,
-               title_b: str = "", marks: bool = True, record_no: int = 6):
+               title_b: str = "", marks: bool = True, record_no: int = 6,
+               comb: Comb = DEFAULT_COMB, overrides: Dict = None, overrides_b: Dict = None):
     H = float(thickness)
     base = _cyl(R_STOCK, H, H / 2)
     two_sided = partition_b is not None
@@ -397,11 +443,11 @@ def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
     disc = trimesh.boolean.difference([base, all_cuts], engine="manifold")
 
     # pins (bumps) refill groove segments up to the surface
-    adds = _pin_meshes(partition, H)
+    adds = _pin_meshes(partition, H, comb, overrides)
     pin_count = len(adds)
     adds.extend(_text_meshes(title, H, record_no if marks else 0))
     if two_sided:
-        side_b = _pin_meshes(partition_b, H)
+        side_b = _pin_meshes(partition_b, H, comb, overrides_b)
         pin_count += len(side_b)
         side_b.extend(_text_meshes(title_b, H, record_no if marks else 0))
         for m in side_b:
@@ -419,11 +465,9 @@ def build_mesh(partition: List[List[bool]], thickness: float = 3.0,
 # .fpr (tracker) and .scad (OpenSCAD) exporters
 # ---------------------------------------------------------------------------
 def to_fpr(partition: List[List[bool]], title: str) -> str:
-    """Music-box tune-tracker text format: 16 tone rows of + / - then title."""
+    """Music-box tune-tracker text format: one row of + / - per pitch, then title."""
     beats = len(partition[0])
-    lines = []
-    for tone in range(TONES_COUNT):
-        lines.append("".join("+" if partition[tone][b] else "-" for b in range(beats)))
+    lines = ["".join("+" if row[b] else "-" for b in range(beats)) for row in partition]
     return "\n".join(lines) + "\n" + (title or "Untitled") + "\n"
 
 
@@ -449,7 +493,7 @@ labelB = "{TITLE_B}";
 labelR = 16.3;
 markR = 8.5;
 hText = 0.6;
-rPin = 0.7;
+rPin = 0.35;
 
 module createDisc() {{
         union() {{
@@ -532,9 +576,9 @@ createDisc();
 '''
 
 
-def _scad_pins(partition, side_flag):
+def _scad_pins(partition, side_flag, comb=DEFAULT_COMB, overrides=None):
     lines = []
-    for p in get_pins(to_physical(partition)):
+    for p in get_pins(to_physical(partition, comb, overrides)):
         deg = math.degrees(p["angle"])
         lines.append(f"\t\tpin({round(p['wall'], 3)},{round(deg, 3)},{side_flag});")
     return lines
@@ -547,13 +591,14 @@ def _scad_str(s: str) -> str:
 def to_scad(partition: List[List[bool]], thickness: float, title: str,
             partition_b: List[List[bool]] = None, title_b: str = "",
             label_a: str = None, label_b: str = None, marks: bool = True,
-            record_no: int = 6) -> str:
+            record_no: int = 6, comb: Comb = DEFAULT_COMB,
+            overrides: Dict = None, overrides_b: Dict = None) -> str:
     label_a = title if label_a is None else label_a
     label_b = title_b if label_b is None else label_b
-    lines = _scad_pins(partition, "false")
+    lines = _scad_pins(partition, "false", comb, overrides)
     if partition_b is not None:
         lines.append("\t\t// Side B")
-        lines.extend(_scad_pins(partition_b, "true"))
+        lines.extend(_scad_pins(partition_b, "true", comb, overrides_b))
     labels = [f'\t\tglyph("{_scad_str(ch)}",{ang},{size},false);'
               for ch, ang, size in label_glyphs(label_a)]
     if marks:
@@ -576,10 +621,15 @@ def to_scad(partition: List[List[bool]], thickness: float, title: str,
 
 
 def analyze(midi_bytes: bytes, duration: float = 25.0, start: float = 0.0,
-            auto_transpose: bool = True, manual_offset: int = 0) -> Dict:
-    """MIDI window -> editable 16 x 86 partition plus mapping stats."""
+            auto_transpose: bool = True, manual_offset: int = 0,
+            comb: Comb = DEFAULT_COMB) -> Dict:
+    """MIDI window -> editable pitch x 86 partition plus mapping stats."""
     events = parse_midi_events(midi_bytes, duration, start)
-    rec = events_to_record(events, duration, auto_transpose, manual_offset)
+    return _finish_analysis(events_to_record(events, duration, auto_transpose, manual_offset, comb),
+                            duration, start)
+
+
+def _finish_analysis(rec: Dict, duration: float, start: float) -> Dict:
     rec["notes_used"] = [{"midi": m, "name": note_name(m)} for m in rec["notes_used"]]
     rec["duration"] = duration
     rec["start"] = start
@@ -589,23 +639,26 @@ def analyze(midi_bytes: bytes, duration: float = 25.0, start: float = 0.0,
 
 def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
           partition_b: List[List[bool]] = None, title_b: str = "",
-          engrave: bool = True, record_no: int = 6) -> Dict:
+          engrave: bool = True, record_no: int = 6, comb: Comb = DEFAULT_COMB,
+          overrides: Dict = None, overrides_b: Dict = None) -> Dict:
     """Partition(s) -> STL / SCAD / FPR files."""
     label_a = title if engrave else ""
     label_b = title_b if engrave else ""
     mesh, pin_count = build_mesh(partition, thickness, label_a, partition_b, label_b,
-                                 marks=engrave, record_no=record_no)
+                                 marks=engrave, record_no=record_no, comb=comb,
+                                 overrides=overrides, overrides_b=overrides_b)
     stl_bytes = mesh.export(file_type="stl")
     if isinstance(stl_bytes, str):
         stl_bytes = stl_bytes.encode()
-    used = sorted({NOTES[t] for part in (partition, partition_b or [])
+    used = sorted({comb.notes[t] for part in (partition, partition_b or [])
                    for t, row in enumerate(part) if any(row)})
     return {
         "stl": bytes(stl_bytes),
         "fpr": to_fpr(partition, title),
         "fpr_b": to_fpr(partition_b, title_b) if partition_b is not None else None,
         "scad": to_scad(partition, thickness, title, partition_b, title_b, label_a, label_b,
-                        marks=engrave, record_no=record_no),
+                        marks=engrave, record_no=record_no, comb=comb,
+                        overrides=overrides, overrides_b=overrides_b),
         "stats": {
             "pin_count": pin_count,
             "thickness": thickness,
@@ -623,6 +676,7 @@ def generate_stl(midi_bytes: bytes, duration: float = 25.0,
                  record_no: int = 6) -> Dict:
     rec = analyze(midi_bytes, duration, 0.0, auto_transpose, manual_offset)
     out = press(rec["partition"], title, thickness, record_no=record_no)
+    out["stats"]["staggered"] = rec["staggered"]
     out["stats"].update({
         "note_count": rec["note_count"],
         "exact": rec["exact"],
@@ -632,4 +686,70 @@ def generate_stl(midi_bytes: bytes, duration: float = 25.0,
         "duration": duration,
     })
     out["partition"] = rec["partition"]
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Factory tune library (the 10 nursery rhymes shipped with the 1971/1977 player),
+# transcribed by ear as NOTE[:beats] in quarter-note units.
+# ---------------------------------------------------------------------------
+LIBRARY = [
+    ("Twinkle Twinkle Little Star", "C5 C5 G5 G5 A5 A5 G5:2 F5 F5 E5 E5 D5 D5 C5:2 "
+     "G5 G5 F5 F5 E5 E5 D5:2 G5 G5 F5 F5 E5 E5 D5:2 C5 C5 G5 G5 A5 A5 G5:2 F5 F5 E5 E5 D5 D5 C5:2"),
+    ("Au Clair de la Lune", "C5 C5 C5 D5 E5:2 D5:2 C5 E5 D5 D5 C5:4 "
+     "C5 C5 C5 D5 E5:2 D5:2 C5 E5 D5 D5 C5:4 D5 D5 D5 D5 A4:2 A4:2 D5 C5 B4 A4 G4:4"),
+    ("Humpty Dumpty", "E5 G5 G5 E5 C5 D5 E5:2 F5 A5 A5 F5 D5 E5 F5:2 "
+     "G5 G5 G5 E5 C5 D5 E5:2 F5 F5 F5 D5 B4 C5 D5:2 E5 F5 G5 A5 G5 F5 E5:2 D5 E5 F5 G5 F5 E5 D5:2 "
+     "E5 F5 G5 A5 G5 F5 E5 D5 C5:3"),
+    ("Jack and Jill", "G5 G5 A5 A5 B5 B5 C6:2 B5 B5 A5 A5 G5:3 "
+     "G5 G5 A5 A5 B5 B5 C6:2 B5 B5 A5 A5 G5:3 D5 D5 E5 F5 G5 G5 A5:2 B5 B5 A5 G5 A5:3 G5 G5 A5 B5 C6 C6 B5 A5 G5:3"),
+    ("Oh Where Has My Little Dog Gone", "G5:2 E5 C5:2 E5 G5:3 G5:2 E5 C5:2 E5 G5:3 "
+     "A5 A5 A5 G5:2 F5 E5 E5 E5 D5:3 G5:2 E5 C5:2 E5 G5:3 A5:2 B5 C6:2 B5 A5 G5 F5 E5 D5 C5:3"),
+    ("London Bridge", "G5 A5 G5 F5 E5 F5 G5:2 D5 E5 F5:2 E5 F5 G5:2 "
+     "G5 A5 G5 F5 E5 F5 G5:2 D5:2 G5:2 E5 C5:3"),
+    ("Edelweiss", "E5 G5 D6:3 C6 G5 F5:3 E5 E5 E5 F5 G5 A5:3 G5:3 "
+     "E5 G5 D6:3 C6 G5 F5:3 E5 G5 G5 A5 B5 C6:3 C6:3 D6 G5 G5 B5 A5 G5 E5 G5 C6:3 A5 D6 C6 D6:3 B5 D6:3 "
+     "E5 G5 D6:3 C6 G5 F5:3 E5 G5 G5 A5 B5 C6:3 C6:3"),
+    ("Children's Prayer", "E5 D5 C5 D5 E5 E5 E5:2 D5 D5 D5:2 E5 G5 G5:2 "
+     "E5 D5 C5 D5 E5 E5 E5 E5 D5 D5 E5 D5 C5:3 G5 G5 F5 D5 E5 E5 E5:2 G5 G5 F5 D5 E5 E5 E5:2 "
+     "E5 D5 C5 D5 E5 E5 E5 E5 D5 D5 E5 D5 C5:3"),
+    ("Camptown Races", "G5 G5 E5 G5 A5 G5 E5:2 E5 D5:3 E5 D5:3 "
+     "G5 G5 E5 G5 A5 G5 E5:2 D5 E5 D5 C5:3 C5 E5 G5:3 A5 C6 A5 G5:3 "
+     "G5 G5 E5 G5 A5 G5 E5:2 D5 E5 D5 C5:3"),
+    ("Hickory Dickory Dock", "E5 D5 C5 E5 D5 C5:2 G5 A5 G5 F5 E5 D5:2 "
+     "E5 F5 G5 A5 B5 C6:2 B5 A5 G5 F5 E5 D5 C5:3 E5 D5 C5 E5 D5 C5:2 G5 A5 G5 F5 E5 D5 C5:3"),
+]
+_NAME_TO_SEMI = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+
+
+def parse_note_name(name: str) -> int:
+    """'G#5' / 'Bb4' / 'C5' -> MIDI number."""
+    s = name.strip().upper().replace("♯", "#").replace("♭", "B")
+    m = re.fullmatch(r"([A-G])([#B]?)(-?\d)", s)
+    if not m:
+        raise ValueError(f"bad note name: {name}")
+    semi = _NAME_TO_SEMI[m.group(1)] + (1 if m.group(2) == "#" else -1 if m.group(2) == "B" else 0)
+    return (int(m.group(3)) + 1) * 12 + semi
+
+
+def melody_events(melody: str, duration: float) -> List[Tuple[float, int]]:
+    """Fit a NOTE[:beats] melody into `duration` seconds (small tail gap)."""
+    steps = []
+    for tok in melody.split():
+        name, _, length = tok.partition(":")
+        steps.append((parse_note_name(name), float(length or 1)))
+    total = sum(l for _, l in steps)
+    scale = duration * 0.96 / total
+    events, t = [], 0.0
+    for midi, length in steps:
+        events.append((t * scale, midi))
+        t += length
+    return events
+
+
+def library(duration: float = 25.0, comb: Comb = DEFAULT_COMB) -> List[Dict]:
+    out = []
+    for title, melody in LIBRARY:
+        rec = events_to_record(melody_events(melody, duration), duration, True, 0, comb)
+        out.append({"title": title, "analysis": _finish_analysis(rec, duration, 0.0)})
     return out

@@ -1,5 +1,5 @@
 import React from "react";
-import { Wand2, Ruler, Clock, Tag, Disc3, Gauge } from "lucide-react";
+import { Wand2, Ruler, Clock, Tag, Disc3, Gauge, Hash } from "lucide-react";
 import { speedPct } from "../lib/fp";
 
 export function Toggle({ checked, onChange, testId }) {
@@ -41,6 +41,17 @@ export default function SettingsPanel({ s, set, revSeconds }) {
         <input
           data-testid="title-input" className={INPUT} maxLength={40} value={s.title}
           placeholder="Twinkle Twinkle" onChange={(e) => set({ title: e.target.value })}
+        />
+      </div>
+
+      <div>
+        <label className="font-mono text-sm flex items-center justify-between">
+          <span className="flex items-center gap-2"><Hash className="h-4 w-4" /> Record number</span>
+          <span className="font-mono text-[10px] text-[#457B9D]">{s.recordNo === "" ? `auto → #${s.nextNo ?? "…"}` : "manual"}</span>
+        </label>
+        <input
+          data-testid="record-no-input" type="number" min="1" max="999" className={`${INPUT} mt-1`} value={s.recordNo}
+          placeholder={`auto (#${s.nextNo ?? "…"})`} onChange={(e) => set({ recordNo: e.target.value })}
         />
       </div>
 

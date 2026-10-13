@@ -53,6 +53,8 @@ class ConversionSummary(BaseModel):
     notes_used: List[dict]
     partition: Optional[Partition] = None
     partition_b: Optional[Partition] = None
+    overrides: Optional[dict] = None
+    overrides_b: Optional[dict] = None
 
 
 class Analysis(BaseModel):
@@ -61,6 +63,7 @@ class Analysis(BaseModel):
     exact: int
     adjusted: int
     merged: int
+    staggered: int = 0
     note_count: int
     notes_used: List[dict]
     duration: float
@@ -81,13 +84,60 @@ class PressRequest(BaseModel):
     exact: int = 0
     adjusted: int = 0
     merged: int = 0
+    record_no: Optional[int] = Field(None, ge=1, le=999)
+    overrides: Optional[dict] = None
+    overrides_b: Optional[dict] = None
 
 
-def _check_partition(p: Optional[Partition], name: str):
+class CombRequest(BaseModel):
+    tracks: List[int] = Field(..., min_length=22, max_length=22)
+
+
+async def _comb() -> fp.Comb:
+    doc = await db.settings.find_one({"_id": "comb"})
+    try:
+        return fp.Comb(doc["tracks"]) if doc else fp.DEFAULT_COMB
+    except Exception:
+        return fp.DEFAULT_COMB
+
+
+def _check_partition(p: Optional[Partition], name: str, comb: fp.Comb):
     if p is None:
         return
-    if len(p) != fp.TONES_COUNT or any(len(r) != fp.MAX_BEAT for r in p):
-        raise HTTPException(400, f"{name} must be {fp.TONES_COUNT} x {fp.MAX_BEAT}")
+    if len(p) != comb.tones or any(len(r) != fp.MAX_BEAT for r in p):
+        raise HTTPException(400, f"{name} must be {comb.tones} x {fp.MAX_BEAT}")
+
+
+@api_router.get("/comb")
+async def get_comb():
+    return (await _comb()).to_dict()
+
+
+@api_router.put("/comb")
+async def put_comb(req: CombRequest):
+    if any(t < 36 or t > 108 for t in req.tracks):
+        raise HTTPException(400, "tine pitches must be MIDI 36..108")
+    if req.tracks != sorted(req.tracks):
+        raise HTTPException(400, "tines must be listed low to high (track 1 = innermost)")
+    await db.settings.update_one({"_id": "comb"}, {"$set": {"tracks": req.tracks}}, upsert=True)
+    return fp.Comb(req.tracks).to_dict()
+
+
+@api_router.delete("/comb")
+async def reset_comb():
+    await db.settings.delete_one({"_id": "comb"})
+    return fp.DEFAULT_COMB.to_dict()
+
+
+@api_router.get("/library")
+async def get_library(duration: float = 25.0):
+    comb = await _comb()
+    return await run_in_threadpool(fp.library, max(5.0, min(60.0, duration)), comb)
+
+
+@api_router.get("/next-record-no")
+async def next_record_no(title: str = ""):
+    return {"record_no": await _record_no(title.strip()) if title.strip() else await _record_no("\u0000")}
 
 
 FIRST_RECORD_NO = 6
@@ -119,6 +169,18 @@ async def root():
     return {"message": "Fisher-Price Music Box Record Creator API"}
 
 
+@api_router.post("/scan")
+async def scan(file: UploadFile = File(...)):
+    """Whole-song overview: every note-on as [seconds, midi] plus total length."""
+    raw = await _read_midi(file)
+    try:
+        events = await run_in_threadpool(fp.parse_midi_events, raw, 3600.0, 0.0)
+        total = await run_in_threadpool(fp.midi_length, raw)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not read MIDI: {e}")
+    return {"events": [[round(t, 3), n] for t, n in events], "total": round(total, 2)}
+
+
 @api_router.post("/analyze", response_model=Analysis)
 async def analyze(
     file: UploadFile = File(...),
@@ -128,6 +190,7 @@ async def analyze(
     manual_offset: int = Form(0),
 ):
     raw = await _read_midi(file)
+    comb = await _comb()
     try:
         rec = await run_in_threadpool(
             fp.analyze, raw,
@@ -135,6 +198,7 @@ async def analyze(
             start=max(0.0, start),
             auto_transpose=auto_transpose,
             manual_offset=manual_offset,
+            comb=comb,
         )
     except Exception as e:
         logging.exception("analysis failed")
@@ -148,7 +212,8 @@ async def analyze(
 
 
 async def _store(doc_id, filename, title, out, meta, title_b=None,
-                 partition=None, partition_b=None, record_no=None):
+                 partition=None, partition_b=None, record_no=None,
+                 overrides=None, overrides_b=None):
     stats = out["stats"]
     doc = {
         "id": doc_id,
@@ -163,6 +228,8 @@ async def _store(doc_id, filename, title, out, meta, title_b=None,
         "scad": out["scad"],
         "partition": partition,
         "partition_b": partition_b,
+        "overrides": overrides,
+        "overrides_b": overrides_b,
         **meta,
         **{k: stats[k] for k in ("pin_count", "thickness", "beats", "triangles",
                                  "notes_used", "two_sided")},
@@ -175,18 +242,20 @@ async def _store(doc_id, filename, title, out, meta, title_b=None,
 
 @api_router.post("/press", response_model=ConversionSummary)
 async def press(req: PressRequest):
-    _check_partition(req.partition, "partition")
-    _check_partition(req.partition_b, "partition_b")
+    comb = await _comb()
+    _check_partition(req.partition, "partition", comb)
+    _check_partition(req.partition_b, "partition_b", comb)
     if not any(any(r) for r in req.partition):
         raise HTTPException(400, "Side A has no notes")
     title_b = (req.title_b or "Side B")[:40] if req.partition_b is not None else None
     min_thick = 4.5 if req.partition_b is not None else 1.5
-    record_no = await _record_no(req.title.strip())
+    record_no = req.record_no or await _record_no(req.title.strip())
     try:
         out = await run_in_threadpool(
             fp.press, req.partition, req.title.strip(),
             max(min_thick, min(8.0, req.thickness)),
-            req.partition_b, title_b or "", req.engrave, record_no,
+            req.partition_b, title_b or "", req.engrave, record_no, comb,
+            req.overrides, req.overrides_b,
         )
     except Exception as e:
         logging.exception("press failed")
@@ -198,7 +267,8 @@ async def press(req: PressRequest):
         "offset": req.offset, "duration": req.duration,
     }
     return await _store(str(uuid.uuid4()), req.filename, req.title.strip(), out, meta,
-                        title_b, req.partition, req.partition_b, record_no)
+                        title_b, req.partition, req.partition_b, record_no,
+                        req.overrides, req.overrides_b)
 
 
 @api_router.post("/convert", response_model=ConversionSummary)
