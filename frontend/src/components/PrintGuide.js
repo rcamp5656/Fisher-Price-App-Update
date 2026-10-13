@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Printer, ChevronDown, ChevronUp, Layers, Compass, Package, Settings2, Sparkles } from "lucide-react";
 import { CARD } from "../lib/fp";
 
@@ -48,6 +48,7 @@ const SECTIONS = [
 
 export default function PrintGuide({ defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
+  useEffect(() => { setOpen(defaultOpen); }, [defaultOpen]);
   return (
     <div data-testid="print-guide" className={`${CARD} col-span-12 overflow-hidden`}>
       <button

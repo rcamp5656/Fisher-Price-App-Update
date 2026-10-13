@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 3 covers new features: Repeat Warning, Loop+PLAY A->B, 22-tines Track view, Print Guide collapsible, Share link + /r/:id route (Shared page with remix), two-sided thickness clamp (frontend >=5mm, backend >=4.5mm) and rev-slider 20..60. Backend: 15/15 pytest pass (13 regression in test_analyze_press.py + 2 new in test_thickness_clamp.py). POST /api/press with partition_b and thickness=3 returns thickness=4.5 (clamped). Single-sided keeps 3.0. Frontend (playwright on preview URL): Twinkle MIDI uploaded via hidden midi-upload-zone-input, analyze -> editor-workspace, stat-repeats=6 with repeat-warning visible and 6 clash-* cells (Twinkle has 3 back-to-back note runs x 2 beats). Adding a note on tone-4 adjacent to an existing tone-4 note raised repeats 6->8; removing restored to 6. view-tracks shows track-view with 28 track-pin-* (matches note count); view-pitch returns to note-editor. loop-button aria-pressed toggles false->true; play-button label 'PLAY PREVIEW'->'STOP', playhead rendered, still playing after 3s with loop on. rev-slider min=20 max=60. two-sided-toggle sets thickness-value=5.0mm and thickness-slider min=4.5. After re-analyze side-tab-a/side-tab-b appear; play-button label becomes 'PLAY A -> B'. CUT THE RECORD -> result-panel appears for two-sided press. Shared /r/{id}: share-title='sample_twinkle', canvas rendered in share-viewer, download-stl/scad/fpr-button hrefs all return HTTP 200, print-guide auto-expanded (LAYER HEIGHT visible). remix-button navigates to / with grid populated (23 notes + 6 clash cells) and sets tab=preview. /r/does-not-exist shows share-error 'That record doesn't exist (or was never pressed).'",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "PrintGuide inside Creator",
+        "issue": "In Creator.js the PrintGuide is mounted on first render (while result=null) with defaultOpen=false. Because PrintGuide only reads defaultOpen into useState() on mount, the subsequent change `defaultOpen={!!result}` (after pressing) has no effect, so the Print Guide stays COLLAPSED after CUT THE RECORD. The task explicitly expects it to be auto-expanded. The toggle itself works (click collapses/expands). Fix: either `useEffect(() => setOpen(defaultOpen), [defaultOpen])` in PrintGuide, OR mount <PrintGuide/> conditionally only when result exists, OR use a key={result?.id || 'none'} to remount it. Shared.js is not affected (PrintGuide only mounts after record loads with defaultOpen=true).",
+        "selector": "[data-testid=print-guide]",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_thickness_clamp.py",
+    "/app/backend/tests/test_analyze_press.py",
+    "/app/test_reports/pytest/iter3.xml"
+  ],
+  "action_items": [
+    "Fix Creator PrintGuide auto-open after press: PrintGuide's internal `open` state ignores later defaultOpen prop changes. Simplest fix inside PrintGuide: add useEffect(()=>setOpen(defaultOpen),[defaultOpen]). Then after CUT THE RECORD the guide expands automatically as spec requires."
+  ],
+  "critical_code_review_comments": [
+    "PrintGuide uses defaultOpen only as initial useState value; does not react to later prop changes, which breaks the 'expanded after press' spec in Creator.",
+    "server.py still uses deprecated @app.on_event('shutdown'); migrate to FastAPI lifespan.",
+    "copyShareLink: in headless/insecure contexts clipboard API fails and we fall back to window.prompt — toast is NOT shown then. Consider also calling toast.info with the URL on fallback so users still get visible confirmation (task notes prompt fallback is acceptable, so not a hard bug).",
+    "TrackView rows: no data-track attribute on parent rows, so DOM-queries can only count via track-pin-* testids — rows count was inferable (16 tones mapped to 22 tines by comb spec). Consider adding data-track to row <div> for easier automation.",
+    "STL base64 blobs are stored directly in Mongo documents (potential 16MB BSON limit risk for dense discs or many notes). GridFS recommended."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_thickness_clamp.py"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "95% (all flows pass except Creator PrintGuide auto-open)"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "Created TEST_ClampA/TEST_ClampB (two-sided, clamped 4.5mm) and TEST_SingleThick (3.0mm) conversions via /api/press, plus a two-sided sample_twinkle/Side B pressing from the UI test.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Only outstanding issue is Creator PrintGuide not auto-expanding when result arrives (defaultOpen prop change ignored by inner useState). Backend thickness clamp (4.5mm when partition_b given) works correctly. New backend test file: /app/backend/tests/test_thickness_clamp.py. Sample MIDI produces initial stat-repeats=6 and 6 clash-* cells for Twinkle sample. Headless clipboard writeText fails -> window.prompt fallback (dialogs auto-dismissed in tests).",
+  "rca of the issue": "PrintGuide (src/components/PrintGuide.js L50) initializes `const [open, setOpen] = useState(defaultOpen)`. React only uses the prop at the initial mount; subsequent prop changes do not update state. Creator mounts <PrintGuide defaultOpen={!!result}/> on first render while result=null, so useState captures `false`. When result transitions to the pressed-record object, defaultOpen flips to true but `open` stays false — the <guide> remains collapsed. Repro: load MIDI -> analyze -> CUT THE RECORD -> print-guide section still shows chevron-down and no section content until user clicks the toggle. Mitigation: add `useEffect(() => setOpen(defaultOpen), [defaultOpen])` in PrintGuide, or key the component on result.id so it remounts, or render it conditionally only when result exists."
+}

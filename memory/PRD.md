@@ -56,9 +56,22 @@ on an original Fisher-Price music box record player.
 - UI labels corrected: "22 tines (16 pitches)".
 - Full E2E tested: backend 13/13, frontend all flows (iteration_2.json).
 
+### 2026-10-13 (session 2, batch 2)
+- **Comb research** (Fred Murphy Instructable comments, twagoo's tuner readings): 22 tines =
+  16 unique pitches, twins on tines 8+9, 10+11, 12+13, 14+15, 16+17, 18+19. Real sounding
+  pitch is a major third below Fred's notation (A♭ major) → preview synth uses `REAL_PITCH_OFFSET=-4`.
+  Fred: double-sided discs must be 5 mm → two-sided toggle auto-sets 5 mm, backend clamps ≥4.5.
+  Some players turn at ~50 s/rev → toy-speed slider 20–60 s.
+- **Repeat warning**: single-tine notes on back-to-back beats highlighted amber + "Repeats" stat + banner.
+- **Loop playback** + sequential A→B playback (0.8 s flip gap), side tab auto-follows playhead.
+- **22 TINES view**: read-only track view showing pins on all 22 physical tracks (11 grooves × 2 walls).
+- **Print Guide** collapsible card (layer height, orientation, material, slicer, finishing); auto-opens after press.
+- **Share links**: `COPY SHARE LINK` → `/r/:id` page (3D view, downloads, print guide, "Remix" → `/?open=id`).
+- Tested: iteration_3.json (backend 15/15, all frontend flows; PrintGuide auto-open fix verified).
+
 ## Backlog / Remaining
 - P1: User validation of physical prints (pin height/width on the real toy).
+- P1: User to verify twin tines 8/9 sound the same pitch on their player (confirms comb mapping).
 - P2: Store STL in GridFS/filesystem instead of base64 (16MB doc limit).
-- P2: Model single-tine repeat limit (warn when a non-twin pitch repeats on adjacent beats).
+- P2: Editable 22-tine view (hand-assign which twin tine takes a note).
 - P2: Migrate deprecated FastAPI `on_event` to lifespan.
-- P2: Loop playback / per-side playback of whole disc in preview.

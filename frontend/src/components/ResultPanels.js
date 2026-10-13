@@ -11,6 +11,7 @@ async function copyShareLink(id) {
     await navigator.clipboard.writeText(url);
     toast.success("Share link copied", { description: url });
   } catch (e) {
+    toast.info("Copy this share link", { description: url, duration: 8000 });
     window.prompt("Copy this link:", url);
   }
 }
