@@ -15,6 +15,7 @@ import RecordShelf from "../components/RecordShelf";
 import TrackPicker from "../components/TrackPicker";
 import AlbumPanel from "../components/AlbumPanel";
 import SongReview from "../components/SongReview";
+import { CREDITS } from "../components/Splash";
 import { CARD, BTN_BASE, BTN_DISABLED, TOY_REV_SECONDS, applyComb, emptyPartition } from "../lib/fp";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -468,8 +469,10 @@ export default function Creator() {
         <RecordShelf history={history} current={result} onOpen={openHistory} onGap={(n) => { set({ recordNo: String(n) }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
         <HistoryPanel api={API} history={history} onPreview={openHistory} />
 
-        <footer className="col-span-12 font-mono text-[11px] text-[#457B9D] text-center pt-4">
-          Print at 100% scale · Ø121mm · one revolution ≈ {revSeconds}s on the toy · fits the vintage Fisher-Price spindle
+        <footer className="col-span-12 font-mono text-[11px] text-[#457B9D] text-center pt-4 flex flex-col gap-1">
+          <span>Print at 100% scale · Ø121mm · one revolution ≈ {revSeconds}s on the toy · fits the vintage Fisher-Price spindle</span>
+          <span data-testid="footer-credits">{CREDITS.title} · {CREDITS.dedication} · <b>{CREDITS.copyright}</b></span>
+          <a data-testid="source-zip-link" href={`${API}/source.zip`} className="underline hover:text-[#1D3557]">Download the complete project source (HTML5 / CSS3 / JS + Python) as a ZIP</a>
         </footer>
       </div>
     </div>

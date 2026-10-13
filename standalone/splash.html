@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fisher-Price Record Maker — Russ Campbell</title>
+<meta name="author" content="Russ Campbell">
+<meta name="copyright" content="Copyright 2026 Russ Campbell. All rights reserved.">
+<style>
+  :root { --navy:#1D3557; --red:#E63946; --cream:#F4F1EA; --gold:#E9C46A; --mist:#A8DADC; --blue:#457B9D; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--cream); font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif; color:var(--navy); }
+  #splash { position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; background:var(--navy); color:var(--cream); cursor:pointer; transition:opacity .5s ease; }
+  #splash.out { opacity:0; pointer-events:none; }
+  .splash-inner { text-align:center; padding:2rem; user-select:none; }
+  .disc { width:88px; height:88px; margin:0 auto 1.5rem; border-radius:50%; background:var(--red); position:relative; animation:spin 4s linear infinite; box-shadow:0 0 0 4px var(--cream) inset; }
+  .disc::after { content:""; position:absolute; inset:34px; border-radius:50%; background:var(--cream); }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  h1 { font-size:clamp(2.25rem, 6vw, 3.75rem); margin:0; letter-spacing:-.02em; font-weight:900; }
+  .dedication { font-family: ui-monospace, "JetBrains Mono", monospace; font-style:italic; color:var(--gold); margin-top:1rem; font-size:1.05rem; }
+  .author { font-weight:900; font-size:1.25rem; margin-top:2rem; }
+  .copyright { font-family: ui-monospace, monospace; color:var(--mist); font-size:.85rem; margin-top:.5rem; }
+  .hint { font-family: ui-monospace, monospace; color:var(--blue); font-size:.65rem; margin-top:2.5rem; }
+  main { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3rem 1.5rem; text-align:center; }
+  main a { display:inline-block; margin-top:1.5rem; padding:.9rem 1.5rem; border:3px solid var(--navy); border-radius:999px; background:var(--red); color:#fff; font-weight:900; text-decoration:none; box-shadow:4px 4px 0 0 var(--navy); transition:transform .15s ease; }
+  main a:hover { transform:translateY(-2px); }
+  footer { font-family: ui-monospace, monospace; font-size:.7rem; color:var(--blue); padding:1.5rem; text-align:center; }
+</style>
+</head>
+<body>
+  <div id="splash" role="button" tabindex="0" aria-label="Enter">
+    <div class="splash-inner">
+      <div class="disc"></div>
+      <h1>Fisher-Price Record Maker</h1>
+      <p class="dedication">Dedicated To My Fiancée Barbara</p>
+      <p class="author">Russ Campbell</p>
+      <p class="copyright">Copyright 2026 Russ Campbell. All rights reserved.</p>
+      <p class="hint">click anywhere to continue</p>
+    </div>
+  </div>
+  <main>
+    <h1>Fisher-Price Record Maker</h1>
+    <p>MIDI → 3D-printable disc for the 1977 Fisher-Price Music Box Record Player.</p>
+    <p>This standalone page is the HTML5 / CSS3 / JS splash. The full application lives in <code>frontend/</code> (React) and <code>backend/</code> (FastAPI) — see <code>README.txt</code>.</p>
+    <a href="../frontend/build/index.html">Open the built app (frontend/build)</a>
+  </main>
+  <footer>Fisher-Price Record Maker · Dedicated To My Fiancée Barbara · Copyright 2026 Russ Campbell. All rights reserved.</footer>
+  <script>
+    (function () {
+      var splash = document.getElementById("splash");
+      function hide() { splash.classList.add("out"); setTimeout(function () { splash.remove(); }, 600); }
+      var timer = setTimeout(hide, 2500);
+      splash.addEventListener("click", function () { clearTimeout(timer); hide(); });
+      splash.addEventListener("keydown", function () { clearTimeout(timer); hide(); });
+    })();
+  </script>
+</body>
+</html>

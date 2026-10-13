@@ -1315,7 +1315,7 @@ def press(partition: List[List[bool]], title: str, thickness: float = 3.0,
         **halves,
         "fpr": to_fpr(partition, title),
         "fpr_b": to_fpr(partition_b, title_b) if partition_b is not None else None,
-        "scad": to_scad(partition, thickness, title, partition_b, title_b, label_a, label_b,
+        "scad": "// Fisher-Price Record Maker - Dedicated To My Fiancee Barbara - Copyright 2026 Russ Campbell. All rights reserved.\n" + to_scad(partition, thickness, title, partition_b, title_b, label_a, label_b,
                         marks=engrave, record_no=record_no, comb=comb,
                         overrides=overrides, overrides_b=overrides_b, pin_radius=pin_radius),
         "stats": {

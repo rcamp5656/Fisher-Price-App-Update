@@ -1,0 +1,30 @@
+{
+  "summary": "Iter19 validates the four new features end-to-end. Backend: 8 new tests in test_iter19_testdisc.py all pass (POST /api/testdisc → 200, title 'CHORD TEST 1-2-3', voices==3, chords==true, mesh_check.ok==true, pin_count==36, record_no assigned, GET by id returns the record with partition column counts beats 2/4/6/8/10/12=1, beats 30/32/34/36/38/40=2, beats 58/60/62/64/66/68=3 and all other beats=0, thickness=9 clamped to 200 no 500). Full regression 137/137 (129 prior + 8 iter19) green after re-running two flaky iter8 numbering tests that timed out once. Frontend (public URL): clicking test-disc-button pressed the CHORD TEST disc within ~25s, 3D preview tab became active (bg-[#1D3557] class), spec sheet shows title 'CHORD TEST 1-2-3', mesh-check reads 'PRINT READY ✓ watertight ✓ consistent winding ✓ 0 open edges 1 solid body 23.4 cm³'. Shelf-albums row is present with the previous iter12 TEST_Iter12_BabyAlbum (4 chips in order #173/1-4..#176/4-4). Clicking shelf-album-disc-fcc527db… opens it; the chip then reads '#173 · 1/4 · PLAYING', the next chip '#174 · 2/4 · NEXT', and shelf-next-174 marker is rendered. baby1.mid upload: top3-by-ear visible, top3-1='1. Tenor Sax 84', track-why-5='why: single line · 1.6 notes/s · F♯3–E4 · 89% of song · score 84' (both 'notes/s' and 'score' present). Clicking top3-2 enters audition (yellow bg-[#FFB703], Square icon); clicking again selects — track-check-6 becomes checked (track 6 instead of track 7 — see note). Clicking top3-1 twice re-selects track 5 (track-check-5 True). render-song-button: audio rendered (duration 180.7s), setting currentTime=60 makes render-position read exactly 'side 3 of 7 · beat 30'. render-jump-button opens Notes tab (active class), note-editor visible, autofit-hint='Off — the window length and start are used exactly as set below.', window-ruler-caption='window 67.8s → 92.7s of song · 86 beats = 1 revolution 0.29 s / beat', exactly 1 cue-marker rendered, duration-value='24.9s of song'. No console errors across all flows.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter19_testdisc.py",
+    "/app/test_reports/pytest/iter19.xml",
+    "/app/test_reports/pytest/iter19_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "fisher_price.py keeps growing (~1420 lines after chord_test_partition) — still above the 700-line split guidance repeatedly flagged in iter17/iter18. Consider splitting into partition.py (stagger, limit_voices, make_playable, chord_test_partition) and mesh.py (build_mesh, heal_mesh, _text_meshes).",
+    "chord_test_partition() hard-codes section starts (2, 30, 58) and the 6-note phrase; MAX_BEAT is a module-level constant. If MAX_BEAT were ever changed, the test disc would silently overflow — add an assert section + 10 <= MAX_BEAT or compute spacing from MAX_BEAT.",
+    "/api/testdisc hard-codes voices=3, chords=True, duration=25.0 inside _store meta. These are the only two places (plus the album path) that must coerce chords↔voices in sync — the iter18 review comment about moving this invariant to a Pydantic validator still stands."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter19_testdisc.py (new, 8 tests)"
+  ],
+  "success_rate": {"backend": "100% (137/137 regression, 8/8 new iter19)", "frontend": "100% of iter19 assertions, 0 console errors"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "Each pytest run creates 2 CHORD TEST 1-2-3 records (thickness 3 and 9) via POST /api/testdisc; iter19 UI run creates 1 additional record. These accumulate under shelf 'CHORD TEST' pressings — may want periodic cleanup similar to TEST_ prefix in iter12.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter19 verified: (1) /api/testdisc endpoint produces a 36-pin 3-voice disc with partition column counts exactly 1/2/3 at the specified beats; (2) RecordShelf renders shelf-albums > shelf-album-{albumId} > shelf-album-disc-{discId} chips in i/n ascending order, open disc gets '· PLAYING' and the next disc gets '· NEXT' + shelf-next-{no} marker; (3) TrackPicker top3-by-ear shows ranked buttons with track-why-{index} lines; single tap = audition (yellow + Square icon), second tap = select-only; (4) SongReview render-position follows audio.currentTime using side = floor(t/(rev+0.6)), beat from remainder; render-jump-button turns autofit OFF, sets duration=render duration, window=start+side*duration, opens Notes tab with 1 cue-marker. The chord_test press takes ~25s on this preview backend so give the UI test ≥40s timeout. Two iter8 numbering tests are flaky on cold connections (connect timeout) but pass on retry — consider adding a session-level retries fixture.",
+  "rca of the issue": "No bug; feature verification pass for all four iter19 features (chord test disc, album shelf, melody confidence top3, review timeline). Backend partition counts match spec exactly: section starts (2,30,58) × 6 notes × 2-beat spacing × voice counts (1,2,3) = 6+12+18 = 36 pins; mesh_check watertight after heal. Frontend assertion math: at t=60s with rev=25s and gap=0.6s, side=floor(60/25.6)=2 (0-indexed) → 'side 3 of 7' (1-indexed), remainder=60-2*25.6=8.8s → beat=round(8.8/25*86)=30 ✓."
+}

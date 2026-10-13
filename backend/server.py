@@ -598,6 +598,60 @@ async def album_zip(album_id: str):
                     headers={"Content-Disposition": f'attachment; filename="{name}-album.zip"'})
 
 
+CREDITS = "Fisher-Price Record Maker - Dedicated To My Fiancee Barbara - Copyright 2026 Russ Campbell. All rights reserved."
+_SRC_SKIP = {"node_modules", ".git", "build", "__pycache__", ".pytest_cache", "test_reports", ".emergent"}
+_SRC_README = """Fisher-Price Record Maker — complete project source
+=====================================================
+{credits}
+
+What is inside
+  backend/        FastAPI + Python geometry (fisher_price.py: MIDI -> 86-beat disc -> STL/SCAD/FPR, auto-fit, albums, 8 kHz review audio)
+  frontend/       React 19 app (HTML5 / CSS3 / JS): editor, 3D preview, track picker, album panel, splash screen
+  frontend/build/ production build of the web app (static HTML5/CSS3/JS) when present
+  standalone/     splash.html — the splash screen as a plain HTML5 / CSS3 / JS page
+  tests/, backend/tests/   pytest suites and sample MIDI files
+  memory/         product notes (PRD.md)
+
+Run it locally
+  1. MongoDB running locally (or any MONGO_URL)
+  2. backend:  cd backend && pip install -r requirements.txt
+               create backend/.env with  MONGO_URL=mongodb://localhost:27017  and  DB_NAME=fisher_price
+               uvicorn server:app --host 0.0.0.0 --port 8001
+  3. frontend: cd frontend && yarn install
+               create frontend/.env with  REACT_APP_BACKEND_URL=http://localhost:8001
+               yarn start   (or  yarn build  for the static HTML5/CSS3/JS bundle in frontend/build)
+
+Secrets (.env files) are NOT included on purpose.
+"""
+
+
+@api_router.get("/source.zip")
+async def source_zip():
+    """The whole project (source + static build if present) as a ZIP, with credits."""
+    root = Path(__file__).resolve().parent.parent
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for p in root.rglob("*"):
+            rel = p.relative_to(root)
+            parts = set(rel.parts)
+            if p.is_dir() or parts & _SRC_SKIP or rel.name.startswith(".env") or rel.name == "yarn.lock" and "frontend" not in parts:
+                continue
+            if rel.parts[0] == "frontend" and "build" in rel.parts and not (root / "frontend" / "build" / "index.html").exists():
+                continue
+            if p.stat().st_size > 25 * 1024 * 1024:
+                continue
+            z.write(p, f"fisher-price-record-maker/{rel}")
+        build = root / "frontend" / "build"
+        if build.exists():
+            for p in build.rglob("*"):
+                if p.is_file():
+                    z.write(p, f"fisher-price-record-maker/frontend/build/{p.relative_to(build)}")
+        z.writestr("fisher-price-record-maker/README.txt", _SRC_README.format(credits=CREDITS))
+        z.writestr("fisher-price-record-maker/LICENSE.txt", CREDITS + "\n")
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="fisher-price-record-maker-source.zip"'})
+
+
 @api_router.post("/testdisc", response_model=ConversionSummary)
 async def test_disc(thickness: float = Form(3.0), pin_radius: float = Form(0.8), engrave: bool = Form(True)):
     """Chord test disc: the same phrase as single notes, two-note chords and triads."""
@@ -762,6 +816,7 @@ def _mesh_report(doc) -> str:
         return "Mesh check: not available for this record (pressed before the pre-flight check existed).\n"
     yn = lambda v: "yes" if v else "NO"
     lines = [
+        CREDITS,
         "Fisher-Price Music Box Record Maker - mesh pre-flight report",
         "=============================================================",
         f"Record #{doc.get('record_no') or '-'}: {doc.get('title')}" + (f" / {doc.get('title_b')}" if doc.get("two_sided") else ""),
