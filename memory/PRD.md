@@ -100,6 +100,14 @@ on an original Fisher-Price music box record player.
 - User confirmed by magnifier: 12 walls, inner/outer walls one-sided, 10 ridges two-sided = 22 tines.
 - Tested: iteration_4.json (backend 37/37 after fixing blank-title 500 on next-record-no; all UI flows pass).
 
+### 2026-10-13 (session 2, batch 6)
+- **Window fine-tune**: ◀ ▶ 0.5 s nudges + start-time box on the song overview (clamped to total − window).
+- **Record Shelf**: tiles for every number (1–5 factory lavender, pressed red, dashed gaps); gap click
+  pre-fills the record-number override; pressed click opens the record.
+- **Library preview**: play/stop control per factory tune before loading it.
+- **Print Pack**: `GET /api/conversions/{id}/pack` zip → STL, SCAD, FPR (A + B), 100×60 mm label-card SVG, README.
+- Tested: iteration_5.json (backend 40/40, all UI flows pass).
+
 ## Backlog / Remaining
 - P1: User validation of physical prints (pin height/width on the real toy).
 - P1: User to verify twin tines 8/9 sound the same pitch on their player (confirms comb mapping).

@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 5 — Window fine-tune nudge/input, Record Shelf, Library tune preview, and Print Pack endpoint. ALL 4 features pass end-to-end. Backend: 40/40 pytest pass (37 regression + 3 new /pack tests in test_iter5_pack.py). GET /api/conversions/{id}/pack returns 200 application/zip with Content-Disposition ending in '-print-pack.zip'; zip contains {name}.stl, {name}.scad, {name}.fpr, {name}-label.svg, README.txt for single-sided and additionally {name}-sideB.fpr for two-sided; label SVG contains the title and 'RECORD #'; README mentions the record number; unknown id → 404. Frontend (Playwright on preview URL): (1) After uploading sample_twinkle.mid (~12s), song-overview shows nudge buttons and window-start-input=0; at duration=25 both nudges are disabled and typing 5 clamps back to 0. Setting duration-slider=5 enables nudges (max ~7s): two right-nudges give input=1 and window-start text '1.0s → 6.0s'; typing 3.2 shows '3.2s → 8.2s'; typing 99 clamps to 7.0 and shows '7.0s → 12.0s'; nudge-left reduces to 6.5. LOAD NOTES still succeeds with start>0. (2) record-shelf renders shelf-factory-1..5 (lavender), 15 shelf-record-* tiles (numbers visible, e.g. shelf-record-6 shows '6'), and 60 shelf-gap-* tiles. Clicking shelf-gap-14 sets record-no-input to '14'; clicking shelf-record-6 switches to 3D preview tab and shows result-panel. (3) library-toggle opens library-list; clicking library-play-humpty-dumpty keeps the list open, leaves title-input empty, does NOT create editor-workspace, and toggles the control background from #2A9D8F → #1D3557 and back; clicking the row itself loads the tune (editor-workspace, title='Humpty Dumpty'). (4) After CUT THE RECORD, download-pack-button href = /api/conversions/{id}/pack and returns 200 application/zip with filename HumptyDumpty-print-pack.zip. Factory comb left intact (GET /api/comb → factory=true).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter5_pack.py",
+    "/app/test_reports/pytest/iter5.xml"
+  ],
+  "action_items": [
+    "Carry-over from iteration 4 (still unresolved per code review): GET /api/next-record-no?title= (blank) still throws 500 because server.py line 142 passes title.strip()='' into _record_no which builds a regex with embedded NUL. Not re-verified in this iteration (feature not under test); keep as known issue."
+  ],
+  "critical_code_review_comments": [
+    "SongOverview.setStart uses `Number(v) || 0` — a legitimate 0 input is fine, but Number('') is 0 so clearing the field snaps to 0; harmless given the clamp but worth noting.",
+    "ResultPanels.js line 40: `${SMALL} bg-[#1D3557] text-white`.replace(...) is a brittle string hack; cleaner to compose SMALL without the baseline color classes.",
+    "server.py still uses deprecated @app.on_event('shutdown') — migrate to FastAPI lifespan.",
+    "STL base64 is stored inline in the Mongo document and now also pulled into memory for the zip pack — fine for ~50 KB STLs but will blow up at scale. Consider streaming/GridFS."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter5_pack.py"
+  ],
+  "success_rate": {"backend": "100% (40/40)", "frontend": "100% (4/4 flows: window fine-tune, record shelf, library preview, print pack)"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "Created TEST_PackSingle, TEST_PackTwo via pytest; plus one UI Humpty Dumpty pressing (#78) during the pack-button flow. Factory comb intact.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iter5 features verified. Backend regression + 3 new /pack tests all pass (/app/backend/tests/test_iter5_pack.py). The /api/next-record-no?title= 500 from iter4 is still present but was not re-exercised in this run — see iteration_4.json for repro. Preview URL from frontend/.env; MIDI sample at /app/tests/assets/sample_twinkle.mid (~12 s).",
+  "rca of the issue": "N/A — no new bugs this iteration."
+}
